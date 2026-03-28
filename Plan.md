@@ -93,7 +93,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Default Whisper model: `medium`
 
 ### T1.4 — GitHub Actions CI (`.github/workflows/ci.yml`)
-**Status:** not started
+**Status:** complete
 
 - Trigger on `push` and `pull_request` to `main`
 - Jobs: `lint` (ruff check + format check), `test` (pytest, excluding integration marks)
@@ -259,7 +259,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 | Order | Phase | Tickets | Status |
 |-------|-------|---------|--------|
 | 1 | Bootstrap | T0.1 → T0.5 | complete |
-| 2 | Dependencies & CI | T1.1 → T1.4 | in progress |
+| 2 | Dependencies & CI | T1.1 → T1.4 | complete |
 | 3 | Tests | T2.1 → T2.5 | not started |
 | 4 | Backend core | T3.1 → T3.3 | not started |
 | 5 | Speech I/O | T4.1 → T4.2 | not started |
