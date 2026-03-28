@@ -88,8 +88,9 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ### T1.3 — Verify Ollama is Running Locally
 **Status:** not started
 
-- Document in `README.md`: required Ollama setup and recommended local model (e.g. `llama3.2:3b` or `mistral:7b` for routing)
-- Add `ollama pull <model>` to setup instructions
+- Document in `README.md`: required Ollama setup and recommended local model
+- Recommended: DeepSeek R1 0528 Qwen3 8B (`ollama run sam860/deepseek-r1-0528-qwen3:8b`) for general use and routing
+- Default Whisper model: `medium`
 
 ---
 
@@ -129,7 +130,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ### T3.1 — Speech Input: Whisper (`src/speech_input.py`)
 **Status:** not started
 
-- `WhisperTranscriber` class loading a Whisper model (default `base`)
+- `WhisperTranscriber` class loading a Whisper model (default `medium`)
 - `transcribe(audio_array: np.ndarray, sample_rate: int) -> str`
 - Accept raw numpy audio from Gradio's audio component
 - Model size configurable via environment variable `WHISPER_MODEL`

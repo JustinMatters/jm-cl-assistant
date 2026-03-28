@@ -27,7 +27,7 @@ User Input (text | Whisper speech)
 
 - Python 3.13+
 - [UV](https://docs.astral.sh/uv/) for package management
-- [Ollama](https://ollama.com/) running locally with a routing model pulled (e.g. `llama3.2:3b`)
+- [Ollama](https://ollama.com/) running locally with a local model pulled (see below)
 - `OPENROUTER_API_KEY` environment variable set
 
 ## Required Model File Downloads
@@ -50,17 +50,33 @@ Quantized alternatives (smaller, slightly lower quality):
 
 If using a quantized model, update `KOKORO_MODEL` in your environment (see below).
 
+## Recommended Local Models
+
+The local Ollama model handles query routing and answers simple queries
+directly. The following are recommended for systems with ~10GB VRAM available
+(e.g. after Whisper medium is loaded on a 16GB GPU):
+
+| Model | Ollama command | Best for |
+|-------|---------------|----------|
+| DeepSeek R1 0528 Qwen3 8B | `ollama run sam860/deepseek-r1-0528-qwen3:8b` | General use, reasoning, routing |
+
+Speech recognition uses **Whisper medium** by default (`WHISPER_MODEL=medium`),
+which gives excellent accuracy at ~5GB VRAM on a CUDA GPU.
+
 ## Setup
 
 ```bash
 # Install dependencies
 uv sync
 
-# Pull the local routing model
-ollama pull llama3.2:3b
+# Pull the recommended local model
+ollama run sam860/deepseek-r1-0528-qwen3:8b
 
 # Download Kokoro model files (see Required Model File Downloads above)
 # Place kokoro-v1.0.onnx and voices-v1.0.bin in the project root
+
+# Set your OpenRouter API key
+export OPENROUTER_API_KEY=your_key_here
 
 # Run the app
 uv run python src/app.py

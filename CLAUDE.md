@@ -28,7 +28,7 @@ Hybrid AI chatbot that routes queries between a local Ollama model and Claude
 
 ## Environment Variables
 - `OPENROUTER_API_KEY` — required for Claude API calls via OpenRouter
-- `WHISPER_MODEL` — optional, defaults to `base`
+- `WHISPER_MODEL` — optional, defaults to `medium`
 
 ## Claude Skills to Use
 - Do NOT use the `claude-api` skill for `src/claude_client.py` — OpenRouter
