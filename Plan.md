@@ -62,7 +62,7 @@ User Input (text | Whisper speech)
 
 ---
 
-## Phase 1 — Dependency Installation
+## Phase 1 — Dependency Installation & CI
 
 ### T1.1 — Add Core Dependencies via UV
 **Status:** complete
@@ -91,6 +91,14 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Recommended: DeepSeek R1 0528 Qwen3 8B (`ollama run sam860/deepseek-r1-0528-qwen3:8b`) for general use and routing
 - Recommended: NVIDIA Nemotron Nano 9B v2 (`ollama run mirage335/NVIDIA-Nemotron-Nano-9B-v2-virtuoso`) for coding questions
 - Default Whisper model: `medium`
+
+### T1.4 — GitHub Actions CI (`.github/workflows/ci.yml`)
+**Status:** not started
+
+- Trigger on `push` and `pull_request` to `main`
+- Jobs: `lint` (ruff check + format check), `test` (pytest, excluding integration marks)
+- Use `astral-sh/setup-uv` action for UV installation
+- Cache `.venv` between runs
 
 ---
 
@@ -234,7 +242,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 
 ---
 
-## Phase 6 — Lint, Format & CI
+## Phase 6 — Final Quality Gate
 
 ### T6.1 — Ruff Lint & Format Pass
 **Status:** not started
@@ -242,20 +250,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Run `uv run ruff check . --fix`
 - Run `uv run ruff format .`
 - Resolve all remaining violations manually
-
-### T6.2 — GitHub Actions CI (`.github/workflows/ci.yml`)
-**Status:** not started
-
-- Trigger on `push` and `pull_request` to `main`
-- Jobs: `lint` (ruff check + format check), `test` (pytest, excluding integration marks)
-- Use `astral-sh/setup-uv` action for UV installation
-- Cache `.venv` between runs
-
-### T6.3 — Pre-commit Hook (local dev)
-**Status:** not started
-
-- Use **`update-config`** skill to register a hook that runs `ruff check` + `ruff format --check` before every commit
-- Prevents lint regressions reaching the remote
+- Confirms codebase is clean before considering the project shippable
 
 ---
 
@@ -264,12 +259,12 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 | Order | Phase | Tickets | Status |
 |-------|-------|---------|--------|
 | 1 | Bootstrap | T0.1 → T0.5 | complete |
-| 2 | Dependencies | T1.1 → T1.3 | complete |
+| 2 | Dependencies & CI | T1.1 → T1.4 | in progress |
 | 3 | Tests | T2.1 → T2.5 | not started |
 | 4 | Backend core | T3.1 → T3.3 | not started |
 | 5 | Speech I/O | T4.1 → T4.2 | not started |
 | 6 | Gradio UI | T5.1 → T5.6 | not started |
-| 7 | CI/Lint | T6.1 → T6.3 | not started |
+| 7 | Final quality gate | T6.1 | not started |
 
 ---
 
@@ -278,4 +273,3 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 | When | Skill | Why |
 |------|-------|-----|
 | T0.5 | `update-config` | Register ruff pre-commit hooks in `settings.json` |
-| T6.3 | `update-config` | Finalize hook configuration |
