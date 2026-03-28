@@ -107,12 +107,12 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ### T2.2 — Claude API Client (`src/claude_client.py`)
 **Status:** not started
 
-- **Invoke `claude-api` skill** when writing this module
-- `ClaudeClient` class using `anthropic.Anthropic`
+- `ClaudeClient` class using OpenRouter's OpenAI-compatible REST API (`openai` SDK)
 - `ask(query: str, model: Literal["sonnet", "opus"], history: list) -> str`
-- Map `"sonnet"` → `claude-sonnet-4-6`, `"opus"` → `claude-opus-4-6`
+- Map `"sonnet"` → `anthropic/claude-sonnet-4-6`, `"opus"` → `anthropic/claude-opus-4-6`
 - Support conversation history (messages list)
-- Read API key from environment variable `ANTHROPIC_API_KEY`
+- Read API key from environment variable `OPENROUTER_API_KEY`
+- Base URL: `https://openrouter.ai/api/v1`
 
 ### T2.3 — Chat Orchestrator (`src/orchestrator.py`)
 **Status:** not started
@@ -266,5 +266,4 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 | When | Skill | Why |
 |------|-------|-----|
 | T0.5 | `update-config` | Register ruff pre-commit hooks in `settings.json` |
-| T2.2 | `claude-api` | Get correct Anthropic SDK patterns for Sonnet/Opus calls |
 | T6.3 | `update-config` | Finalize hook configuration |

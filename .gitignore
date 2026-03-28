@@ -72,3 +72,7 @@ desktop.ini
 *.bin
 whisper_cache/
 kokoro_cache/
+
+# Claude Code — skills excluded (licensing) and local overrides
+.claude/skills/
+.claude/settings.local.json
