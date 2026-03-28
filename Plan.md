@@ -48,7 +48,7 @@ User Input (text | Whisper speech)
 - Add `[tool.ruff.format]` for formatter config
 
 ### T0.4 — Configure pytest
-**Status:** not started
+**Status:** complete
 
 - Add `[tool.pytest.ini_options]` to `pyproject.toml`
 - Set `testpaths = ["tests"]`, `addopts = "-v --tb=short"`
