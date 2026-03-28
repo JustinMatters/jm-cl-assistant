@@ -28,7 +28,12 @@ Hybrid AI chatbot that routes queries between a local Ollama model and Claude
 
 ## Environment Variables
 - `OPENROUTER_API_KEY` — required for Claude API calls via OpenRouter
-- `WHISPER_MODEL` — optional, defaults to `medium`
+
+## Runtime Configuration (argparse — see T4.6)
+The following are currently hardcoded defaults pending argparse implementation:
+- Whisper model: `medium` (hardcoded in `src/speech_input.py`)
+- Ollama model: `sam860/deepseek-r1-0528-qwen3:8b` (hardcoded in `src/router.py`)
+These will become `--whisper-model` and `--ollama-model` CLI arguments in T4.6.
 
 ## Claude Skills to Use
 - Do NOT use the `claude-api` skill for `src/claude_client.py` — OpenRouter

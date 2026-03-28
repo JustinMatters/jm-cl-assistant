@@ -90,6 +90,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 
 - Document in `README.md`: required Ollama setup and recommended local model
 - Recommended: DeepSeek R1 0528 Qwen3 8B (`ollama run sam860/deepseek-r1-0528-qwen3:8b`) for general use and routing
+- Recommended: NVIDIA Nemotron Nano 9B v2 (`ollama run mirage335/NVIDIA-Nemotron-Nano-9B-v2-virtuoso`) for coding questions
 - Default Whisper model: `medium`
 
 ---
@@ -183,6 +184,16 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Gradio `visible` updates to show/hide `gr.Textbox` vs `gr.Audio` input
 - All state managed through `gr.State`
 
+### T4.6 — Argparse Runtime Configuration (`src/app.py`)
+**Status:** not started
+
+- Add `argparse` to `src/app.py` entry point
+- `--whisper-model` — Whisper model size (default: `medium`)
+- `--ollama-model` — Ollama model name (default: `sam860/deepseek-r1-0528-qwen3:8b`)
+- Pass parsed args down to `WhisperTranscriber` and `OllamaRouter` constructors
+- Until this ticket is implemented, both values are hardcoded as module-level
+  constants in their respective source files
+
 ---
 
 ## Phase 5 — Tests
@@ -256,7 +267,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 | 2 | Dependencies | T1.1 → T1.3 | not started |
 | 3 | Backend core | T2.1 → T2.3 | not started |
 | 4 | Speech I/O | T3.1 → T3.2 | not started |
-| 5 | Gradio UI | T4.1 → T4.5 | not started |
+| 5 | Gradio UI | T4.1 → T4.6 | not started |
 | 6 | Tests | T5.1 → T5.5 | not started |
 | 7 | CI/Lint | T6.1 → T6.3 | not started |
 

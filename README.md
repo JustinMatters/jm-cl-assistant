@@ -59,9 +59,11 @@ directly. The following are recommended for systems with ~10GB VRAM available
 | Model | Ollama command | Best for |
 |-------|---------------|----------|
 | DeepSeek R1 0528 Qwen3 8B | `ollama run sam860/deepseek-r1-0528-qwen3:8b` | General use, reasoning, routing |
+| NVIDIA Nemotron Nano 9B v2 | `ollama run mirage335/NVIDIA-Nemotron-Nano-9B-v2-virtuoso` | Coding questions |
 
-Speech recognition uses **Whisper medium** by default (`WHISPER_MODEL=medium`),
-which gives excellent accuracy at ~5GB VRAM on a CUDA GPU.
+Speech recognition uses **Whisper medium** by default, which gives excellent
+accuracy at ~5GB VRAM on a CUDA GPU. The Whisper model and Ollama model can
+be overridden at runtime via CLI arguments (see `uv run python src/app.py --help`).
 
 ## Setup
 
