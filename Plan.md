@@ -32,7 +32,7 @@ User Input (text | Whisper speech)
 - **Skill:** none — standard `gh repo create` workflow
 
 ### T0.2 — Initialize UV Project
-**Status:** not started
+**Status:** complete
 
 - Run `uv init` to create `pyproject.toml`
 - Set `requires-python = ">=3.13"`
