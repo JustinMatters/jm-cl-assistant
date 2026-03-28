@@ -105,7 +105,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ## Phase 2 — Tests
 
 ### T2.1 — Router Unit Tests (`tests/test_router.py`)
-**Status:** not started
+**Status:** complete
 
 - Mock Ollama client responses
 - Assert correct classification for sample queries
