@@ -35,7 +35,7 @@ User Input (text | Whisper speech)
 **Status:** not started
 
 - Run `uv init` to create `pyproject.toml`
-- Set `requires-python = ">=3.11"`
+- Set `requires-python = ">=3.13"`
 - Define project metadata (name, version, description)
 - Add `uv.lock` to version control; add `.venv/` to `.gitignore`
 
