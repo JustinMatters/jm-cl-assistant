@@ -40,11 +40,11 @@ User Input (text | Whisper speech)
 - Add `uv.lock` to version control; add `.venv/` to `.gitignore`
 
 ### T0.3 — Configure Ruff
-**Status:** not started
+**Status:** complete
 
 - Add `[tool.ruff]` section to `pyproject.toml`
 - Enable rules: `E`, `F`, `I` (isort), `UP` (pyupgrade), `B` (bugbear)
-- Set `line-length = 100`, `target-version = "py311"`
+- Set `line-length = 80`, `target-version = "py313"`
 - Add `[tool.ruff.format]` for formatter config
 
 ### T0.4 — Configure pytest
