@@ -47,7 +47,4 @@ jobs:
         run: uv sync
 
       - name: Run tests
-        run: |
-          uv run pytest -m "not integration"
-          EC=$?
-          if [ $EC -eq 5 ]; then exit 0; else exit $EC; fi
+        run: uv run pytest -m "not integration" || [ $? -eq 5 ]
