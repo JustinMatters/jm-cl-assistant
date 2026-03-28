@@ -12,7 +12,7 @@ Hybrid AI chatbot that routes queries between a local Ollama model and Claude
 - `src/orchestrator.py` — Orchestrator: composes router + clients, manages
   conversation history
 - `src/speech_input.py` — WhisperTranscriber: STT via openai-whisper
-- `src/speech_output.py` — KokoroSpeaker: TTS via kokoro
+- `src/speech_output.py` — KokoroSpeaker: TTS via kokoro-onnx
 - `src/app.py` — Gradio Blocks UI, mode switching, wires all components
 - `tests/` — pytest unit tests (mocked) + integration tests (live Ollama,
   marked with @pytest.mark.integration)

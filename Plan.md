@@ -66,15 +66,15 @@ User Input (text | Whisper speech)
 ## Phase 1 — Dependency Installation
 
 ### T1.1 — Add Core Dependencies via UV
-**Status:** not started
+**Status:** complete
 
 Install all runtime dependencies:
 ```
 uv add gradio
 uv add ollama
-uv add anthropic
+uv add openai
 uv add openai-whisper
-uv add kokoro
+uv add kokoro-onnx
 uv add sounddevice numpy
 ```
 
@@ -137,7 +137,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ### T3.2 — Speech Output: Kokoro (`src/speech_output.py`)
 **Status:** not started
 
-- `KokoroSpeaker` class wrapping the Kokoro pipeline
+- `KokoroSpeaker` class wrapping the `kokoro-onnx` pipeline
 - `synthesize(text: str) -> tuple[np.ndarray, int]` — returns audio array + sample rate
 - Voice and speed configurable
 - Lazy-load model on first call to avoid startup delay
