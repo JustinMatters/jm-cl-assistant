@@ -55,7 +55,7 @@ User Input (text | Whisper speech)
 - Create `tests/__init__.py` and `tests/conftest.py`
 
 ### T0.5 — Configure Claude Code Skills & Hooks
-**Status:** not started
+**Status:** complete
 
 - Create `CLAUDE.md` at repo root documenting architecture decisions and conventions
 - Use the **`update-config`** skill to add pre-commit hooks: `ruff check` and `ruff format --check`
@@ -79,7 +79,7 @@ uv add sounddevice numpy
 ```
 
 ### T1.2 — Add Dev Dependencies via UV
-**Status:** not started
+**Status:** complete
 
 ```
 uv add --dev ruff pytest pytest-mock pytest-asyncio
