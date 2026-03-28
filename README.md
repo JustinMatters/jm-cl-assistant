@@ -48,39 +48,66 @@ Quantized alternatives (smaller, slightly lower quality):
 - `kokoro-v1.0.fp16.onnx` (169 MB) — half precision
 - `kokoro-v1.0.int8.onnx` (88 MB) — integer quantized
 
-If using a quantized model, update `KOKORO_MODEL` in your environment (see below).
+If using a quantized model, pass the filename to `KokoroSpeaker` at
+initialisation (full precision is the default).
 
-## Recommended Local Models
+## Ollama Setup
 
-The local Ollama model handles query routing and answers simple queries
-directly. The following are recommended for systems with ~10GB VRAM available
-(e.g. after Whisper medium is loaded on a 16GB GPU):
+### 1. Install Ollama
 
-| Model | Ollama command | Best for |
-|-------|---------------|----------|
-| DeepSeek R1 0528 Qwen3 8B | `ollama run sam860/deepseek-r1-0528-qwen3:8b` | General use, reasoning, routing |
-| NVIDIA Nemotron Nano 9B v2 | `ollama run mirage335/NVIDIA-Nemotron-Nano-9B-v2-virtuoso` | Coding questions |
+Download and install from [ollama.com](https://ollama.com). On Windows,
+Ollama runs as a background service and starts automatically.
 
-Speech recognition uses **Whisper medium** by default, which gives excellent
-accuracy at ~5GB VRAM on a CUDA GPU. The Whisper model and Ollama model can
-be overridden at runtime via CLI arguments (see `uv run python src/app.py --help`).
+Verify it is running:
+```bash
+ollama list
+```
+
+### 2. Pull the Local Models
+
+This app uses two local models — one for general queries and routing, one
+for coding questions. Pull both before running the app:
+
+```bash
+# General use, reasoning, and query routing (default)
+ollama run sam860/deepseek-r1-0528-qwen3:8b
+
+# Coding questions
+ollama run mirage335/NVIDIA-Nemotron-Nano-9B-v2-virtuoso
+```
+
+> **Note:** These models require approximately 5–6 GB of VRAM each. On a
+> 16 GB GPU with Whisper medium loaded (~5 GB), there is sufficient headroom
+> to run either model. Only one is loaded at a time by Ollama.
+
+### 3. Recommended Models Reference
+
+| Model | Best for | VRAM (approx) |
+|-------|----------|---------------|
+| DeepSeek R1 0528 Qwen3 8B | General use, reasoning, routing | ~5 GB |
+| NVIDIA Nemotron Nano 9B v2 | Coding questions | ~6 GB |
+
+Speech recognition uses **Whisper medium** by default (~5 GB VRAM on CUDA).
+The Whisper model and Ollama model can be overridden at runtime via CLI
+arguments (see `uv run python src/app.py --help`).
 
 ## Setup
 
 ```bash
-# Install dependencies
+# 1. Install Python dependencies
 uv sync
 
-# Pull the recommended local model
+# 2. Pull Ollama models (see Ollama Setup above)
 ollama run sam860/deepseek-r1-0528-qwen3:8b
+ollama run mirage335/NVIDIA-Nemotron-Nano-9B-v2-virtuoso
 
-# Download Kokoro model files (see Required Model File Downloads above)
-# Place kokoro-v1.0.onnx and voices-v1.0.bin in the project root
+# 3. Download Kokoro model files (see Required Model File Downloads above)
+#    Place kokoro-v1.0.onnx and voices-v1.0.bin in the project root
 
-# Set your OpenRouter API key
+# 4. Set your OpenRouter API key
 export OPENROUTER_API_KEY=your_key_here
 
-# Run the app
+# 5. Run the app
 uv run python src/app.py
 ```
 

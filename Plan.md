@@ -86,7 +86,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ```
 
 ### T1.3 — Verify Ollama is Running Locally
-**Status:** not started
+**Status:** complete
 
 - Document in `README.md`: required Ollama setup and recommended local model
 - Recommended: DeepSeek R1 0528 Qwen3 8B (`ollama run sam860/deepseek-r1-0528-qwen3:8b`) for general use and routing
