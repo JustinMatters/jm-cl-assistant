@@ -24,7 +24,7 @@ User Input (text | Whisper speech)
 ## Phase 0 — Project Bootstrap
 
 ### T0.1 — Create GitHub Repository
-**Status:** not started
+**Status:** complete
 
 - Create a new public/private GitHub repo named `jm-cl-assistant`
 - Clone locally to `C:\Users\justi\Documents\GitHub\jm-cl-assistant`
