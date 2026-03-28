@@ -112,28 +112,28 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Test edge cases: ambiguous, empty input, non-English
 
 ### T2.2 — Orchestrator Unit Tests (`tests/test_orchestrator.py`)
-**Status:** not started
+**Status:** complete
 
 - Mock `OllamaRouter` and `ClaudeClient`
 - Verify correct backend is called for each classification
 - Verify history is threaded correctly
 
 ### T2.3 — Claude Client Unit Tests (`tests/test_claude_client.py`)
-**Status:** not started
+**Status:** complete
 
 - Mock `openai.OpenAI` using `pytest-mock`
 - Verify correct model IDs are sent to OpenRouter
 - Verify messages format
 
 ### T2.4 — Speech Module Unit Tests (`tests/test_speech.py`)
-**Status:** not started
+**Status:** complete
 
 - Mock Whisper and Kokoro models
 - Test transcription returns a string
 - Test synthesis returns `(ndarray, int)`
 
 ### T2.5 — Integration Smoke Test (`tests/test_integration.py`)
-**Status:** not started
+**Status:** complete
 
 - Spin up orchestrator against a live local Ollama instance (mark with `@pytest.mark.integration`)
 - Excluded from default test run; run explicitly with `-m integration`
