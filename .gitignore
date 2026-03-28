@@ -69,9 +69,14 @@ desktop.ini
 *.wav
 *.mp3
 *.pt
-*.bin
 whisper_cache/
 kokoro_cache/
+
+# Kokoro-ONNX model files (large binaries — see README for download instructions)
+kokoro-v1.0.onnx
+kokoro-v1.0.fp16.onnx
+kokoro-v1.0.int8.onnx
+voices-v1.0.bin
 
 # Claude Code — skills excluded (licensing) and local overrides
 .claude/skills/
