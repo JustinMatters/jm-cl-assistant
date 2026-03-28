@@ -59,7 +59,6 @@ User Input (text | Whisper speech)
 
 - Create `CLAUDE.md` at repo root documenting architecture decisions and conventions
 - Use the **`update-config`** skill to add pre-commit hooks: `ruff check` and `ruff format --check`
-- Use the **`claude-api`** skill when writing any Anthropic SDK code (invoked in T2.2)
 
 ---
 
@@ -95,18 +94,57 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 
 ---
 
-## Phase 2 — Core Backend Modules
+## Phase 2 — Tests
 
-### T2.1 — Ollama Router (`src/router.py`)
+### T2.1 — Router Unit Tests (`tests/test_router.py`)
+**Status:** not started
+
+- Mock Ollama client responses
+- Assert correct classification for sample queries
+- Test edge cases: ambiguous, empty input, non-English
+
+### T2.2 — Orchestrator Unit Tests (`tests/test_orchestrator.py`)
+**Status:** not started
+
+- Mock `OllamaRouter` and `ClaudeClient`
+- Verify correct backend is called for each classification
+- Verify history is threaded correctly
+
+### T2.3 — Claude Client Unit Tests (`tests/test_claude_client.py`)
+**Status:** not started
+
+- Mock `openai.OpenAI` using `pytest-mock`
+- Verify correct model IDs are sent to OpenRouter
+- Verify messages format
+
+### T2.4 — Speech Module Unit Tests (`tests/test_speech.py`)
+**Status:** not started
+
+- Mock Whisper and Kokoro models
+- Test transcription returns a string
+- Test synthesis returns `(ndarray, int)`
+
+### T2.5 — Integration Smoke Test (`tests/test_integration.py`)
+**Status:** not started
+
+- Spin up orchestrator against a live local Ollama instance (mark with `@pytest.mark.integration`)
+- Excluded from default test run; run explicitly with `-m integration`
+
+---
+
+## Phase 3 — Core Backend Modules
+
+### T3.1 — Ollama Router (`src/router.py`)
 **Status:** not started
 
 - `OllamaRouter` class wrapping the `ollama` Python client
 - `classify(query: str) -> Literal["simple", "complex_sonnet", "complex_opus"]`
 - Prompt the local model with a structured classification prompt
 - Parse response into one of three routing decisions
+- Default model: `sam860/deepseek-r1-0528-qwen3:8b` (hardcoded constant until T5.6)
 - Unit testable in isolation (mock the Ollama client)
 
-### T2.2 — Claude API Client (`src/claude_client.py`)
+### T3.2 — Claude API Client (`src/claude_client.py`)
 **Status:** not started
 
 - `ClaudeClient` class using OpenRouter's OpenAI-compatible REST API (`openai` SDK)
@@ -116,7 +154,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Read API key from environment variable `OPENROUTER_API_KEY`
 - Base URL: `https://openrouter.ai/api/v1`
 
-### T2.3 — Chat Orchestrator (`src/orchestrator.py`)
+### T3.3 — Chat Orchestrator (`src/orchestrator.py`)
 **Status:** not started
 
 - `Orchestrator` class composing `OllamaRouter` + `ClaudeClient` + Ollama direct client
@@ -126,17 +164,17 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 
 ---
 
-## Phase 3 — Speech I/O Modules
+## Phase 4 — Speech I/O Modules
 
-### T3.1 — Speech Input: Whisper (`src/speech_input.py`)
+### T4.1 — Speech Input: Whisper (`src/speech_input.py`)
 **Status:** not started
 
-- `WhisperTranscriber` class loading a Whisper model (default `medium`)
+- `WhisperTranscriber` class loading a Whisper model
+- Default model: `medium` (hardcoded constant until T5.6)
 - `transcribe(audio_array: np.ndarray, sample_rate: int) -> str`
 - Accept raw numpy audio from Gradio's audio component
-- Model size configurable via environment variable `WHISPER_MODEL`
 
-### T3.2 — Speech Output: Kokoro (`src/speech_output.py`)
+### T4.2 — Speech Output: Kokoro (`src/speech_output.py`)
 **Status:** not started
 
 - `KokoroSpeaker` class wrapping the `kokoro-onnx` pipeline
@@ -146,9 +184,9 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 
 ---
 
-## Phase 4 — Gradio Interface
+## Phase 5 — Gradio Interface
 
-### T4.1 — App Skeleton (`src/app.py`)
+### T5.1 — App Skeleton (`src/app.py`)
 **Status:** not started
 
 - Gradio `Blocks` layout
@@ -156,35 +194,35 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Chat history component (`gr.Chatbot`)
 - Submit/record controls
 
-### T4.2 — Text Input Flow
+### T5.2 — Text Input Flow
 **Status:** not started
 
 - `gr.Textbox` for typed input
 - On submit: `Orchestrator.respond()` → display in chatbot
 - Show routing decision as a subtle label (e.g. "Answered by: Ollama / Sonnet / Opus")
 
-### T4.3 — Speech Input Flow
+### T5.3 — Speech Input Flow
 **Status:** not started
 
 - `gr.Audio(source="microphone")` component shown when input mode = speech
 - On audio captured: `WhisperTranscriber.transcribe()` → feed transcript to orchestrator
 - Display transcript in chatbot as user message
 
-### T4.4 — Speech Output Flow
+### T5.4 — Speech Output Flow
 **Status:** not started
 
 - When output mode = `speech` or `dual`: pipe response text through `KokoroSpeaker.synthesize()`
 - Play via `gr.Audio(autoplay=True)`
 - `dual` mode renders both text in chatbot and audio playback simultaneously
 
-### T4.5 — Mode Switching Logic
+### T5.5 — Mode Switching Logic
 **Status:** not started
 
 - `gr.Radio` components for input/output mode
 - Gradio `visible` updates to show/hide `gr.Textbox` vs `gr.Audio` input
 - All state managed through `gr.State`
 
-### T4.6 — Argparse Runtime Configuration (`src/app.py`)
+### T5.6 — Argparse Runtime Configuration (`src/app.py`)
 **Status:** not started
 
 - Add `argparse` to `src/app.py` entry point
@@ -193,44 +231,6 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Pass parsed args down to `WhisperTranscriber` and `OllamaRouter` constructors
 - Until this ticket is implemented, both values are hardcoded as module-level
   constants in their respective source files
-
----
-
-## Phase 5 — Tests
-
-### T5.1 — Router Unit Tests (`tests/test_router.py`)
-**Status:** not started
-
-- Mock Ollama client responses
-- Assert correct classification for sample queries
-- Test edge cases: ambiguous, empty input, non-English
-
-### T5.2 — Orchestrator Unit Tests (`tests/test_orchestrator.py`)
-**Status:** not started
-
-- Mock `OllamaRouter` and `ClaudeClient`
-- Verify correct backend is called for each classification
-- Verify history is threaded correctly
-
-### T5.3 — Claude Client Unit Tests (`tests/test_claude_client.py`)
-**Status:** not started
-
-- Mock `anthropic.Anthropic` using `pytest-mock`
-- Verify correct model IDs are sent
-- Verify messages format
-
-### T5.4 — Speech Module Unit Tests (`tests/test_speech.py`)
-**Status:** not started
-
-- Mock Whisper and Kokoro models
-- Test transcription returns a string
-- Test synthesis returns `(ndarray, int)`
-
-### T5.5 — Integration Smoke Test (`tests/test_integration.py`)
-**Status:** not started
-
-- Spin up orchestrator against a live local Ollama instance (mark with `@pytest.mark.integration`)
-- Excluded from default test run; run explicitly with `-m integration`
 
 ---
 
@@ -263,12 +263,12 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 
 | Order | Phase | Tickets | Status |
 |-------|-------|---------|--------|
-| 1 | Bootstrap | T0.1 → T0.5 | not started |
-| 2 | Dependencies | T1.1 → T1.3 | not started |
-| 3 | Backend core | T2.1 → T2.3 | not started |
-| 4 | Speech I/O | T3.1 → T3.2 | not started |
-| 5 | Gradio UI | T4.1 → T4.6 | not started |
-| 6 | Tests | T5.1 → T5.5 | not started |
+| 1 | Bootstrap | T0.1 → T0.5 | complete |
+| 2 | Dependencies | T1.1 → T1.3 | complete |
+| 3 | Tests | T2.1 → T2.5 | not started |
+| 4 | Backend core | T3.1 → T3.3 | not started |
+| 5 | Speech I/O | T4.1 → T4.2 | not started |
+| 6 | Gradio UI | T5.1 → T5.6 | not started |
 | 7 | CI/Lint | T6.1 → T6.3 | not started |
 
 ---
