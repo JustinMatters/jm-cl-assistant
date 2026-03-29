@@ -342,6 +342,61 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 | 5 | Gradio UI | T5.1 → T5.6 | complete |
 | 6 | Quality gate | T6.1 | complete |
 | 7 | Refinements | T7.1 → T7.9 | complete |
+| 8 | Text to Speech Debugging | T8.1 → T8.3 | not started |
+| 9 | Speech to Text Debugging | T9.1 | not started |
+
+---
+
+## Phase 8 — Text to Speech Debugging
+
+### T8.1 — Fix Kokoro TTS Initialisation
+**Status:** not started
+
+The installed version of `kokoro-onnx` requires `model_path` and
+`voices_path` as positional arguments to `Kokoro.__init__()`, but
+`KokoroSpeaker.synthesize` currently calls `Kokoro()` with no arguments,
+raising:
+
+```
+TypeError: Kokoro.__init__() missing 2 required positional arguments:
+'model_path' and 'voices_path'
+```
+
+- Investigate the current `kokoro-onnx` API to confirm required arguments
+- Update `KokoroSpeaker` to pass the correct model file paths
+  (expected files: `kokoro-v1.0.onnx` and `voices-v1.0.bin` in project root
+  per the README)
+- Make the paths configurable (constructor arguments with sensible defaults)
+- Update or add unit tests to cover the new constructor signature
+
+### T8.2 — Manual Check of TTS and Resolve Any Bugs
+**Status:** not started
+
+- Run the app and manually test the speech output mode end-to-end
+- Verify audio plays correctly in the browser via the `gr.Audio` component
+- Identify and fix any bugs found during testing
+- Document any issues resolved
+
+### T8.3 — Manual Check of Dual Mode and Resolve Any Bugs
+**Status:** not started
+
+- Run the app and manually test dual output mode (text + speech simultaneously)
+- Verify both the chatbot text and audio output are populated correctly
+- Identify and fix any bugs found during testing
+- Document any issues resolved
+
+---
+
+## Phase 9 — Speech to Text Debugging
+
+### T9.1 — Check STT via Whisper Works End-to-End
+**Status:** not started
+
+- Verify the browser can access the microphone via the `gr.Audio` component
+- Verify audio is captured and passed correctly to `WhisperTranscriber.transcribe()`
+- Verify Whisper converts speech to text without error
+- Verify the transcribed text is displayed correctly as the user message in the chat
+- Identify and fix any bugs found at each stage
 
 ---
 
