@@ -163,7 +163,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Base URL: `https://openrouter.ai/api/v1`
 
 ### T3.3 — Chat Orchestrator (`src/orchestrator.py`)
-**Status:** not started
+**Status:** complete
 
 - `Orchestrator` class composing `OllamaRouter` + `ClaudeClient` + Ollama direct client
 - `respond(query: str, history: list) -> tuple[str, list]`
