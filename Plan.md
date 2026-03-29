@@ -301,7 +301,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - `uv run pytest -m "not integration"`
 
 ### T7.7 — Add Google-Style Docstrings
-**Status:** not started
+**Status:** complete
 
 - Add docstrings to all public classes and functions across `src/` following the
   [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)

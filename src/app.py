@@ -1,3 +1,10 @@
+"""Gradio web interface for the JM Assistant chatbot.
+
+Provides a Blocks-based UI with text and speech input/output modes,
+dark/light theme toggle, configurable conversation height, and a toggle
+to show or hide LLM chain-of-thought ``<think>`` tags.
+"""
+
 import argparse
 
 import gradio as gr
@@ -13,6 +20,20 @@ WHISPER_MODEL_DEFAULT = "medium"
 
 
 def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
+    """Construct and return the Gradio Blocks application.
+
+    Instantiates the orchestrator, transcriber, and speaker, then wires
+    all UI components and event handlers together.
+
+    Args:
+        whisper_model: Whisper model size to load for speech input
+          (e.g. ``"tiny"``, ``"base"``, ``"medium"``).
+        ollama_model: Ollama model name used for routing and simple
+          query responses.
+
+    Returns:
+        A configured ``gr.Blocks`` instance ready to launch.
+    """
     orchestrator = Orchestrator(ollama_model=ollama_model)
     transcriber = WhisperTranscriber(model=whisper_model)
     speaker = KokoroSpeaker()
@@ -179,6 +200,7 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
 
 
 def main():
+    """Parse CLI arguments and launch the Gradio app."""
     parser = argparse.ArgumentParser(description="JM Assistant")
     parser.add_argument(
         "--whisper-model",

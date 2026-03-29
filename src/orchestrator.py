@@ -1,3 +1,9 @@
+"""Orchestrator that routes queries to Ollama or Claude via OpenRouter.
+
+Composes OllamaRouter for complexity classification, OpenRouterClient for
+Claude responses, and a direct Ollama client for simple queries.
+"""
+
 import ollama
 
 from src.openrouter_client import (
@@ -9,6 +15,21 @@ from src.router import OLLAMA_MODEL, OllamaRouter
 
 
 class Orchestrator:
+    """Routes user queries to the appropriate LLM backend.
+
+    Uses OllamaRouter to classify each query, then dispatches to a local
+    Ollama model for simple queries or to Claude Sonnet/Opus via
+    OpenRouter for complex ones.
+
+    Args:
+        ollama_model: The Ollama model name used for both classification
+          and simple-query responses.  Defaults to OLLAMA_MODEL.
+
+    Attributes:
+        last_backend: Human-readable label of the backend that answered
+          the most recent query (e.g. ``"Ollama: deepseek-r1-..."``).
+    """
+
     def __init__(self, ollama_model: str = OLLAMA_MODEL) -> None:
         self._router = OllamaRouter(model=ollama_model)
         self._claude = OpenRouterClient()
@@ -20,6 +41,20 @@ class Orchestrator:
         }
 
     def respond(self, query: str, history: list) -> tuple[str, list]:
+        """Generate a response and update the conversation history.
+
+        Classifies the query, dispatches to the appropriate backend, and
+        appends the user message and assistant response to the history.
+
+        Args:
+            query: The user's input text.
+            history: The current conversation history as a list of
+              ``{"role": ..., "content": ...}`` dicts.
+
+        Returns:
+            A tuple of ``(response_text, updated_history)`` where
+            ``updated_history`` includes the new user and assistant turns.
+        """
         classification = self._router.classify(query)
         self.last_backend = self._backend_labels[classification]
         if classification == "simple":
