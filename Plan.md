@@ -245,7 +245,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ## Phase 6 — Final Quality Gate
 
 ### T6.1 — Ruff Lint & Format Pass
-**Status:** not started
+**Status:** complete
 
 - Run `uv run ruff check . --fix`
 - Run `uv run ruff format .`
@@ -264,7 +264,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 | 4 | Backend core | T3.1 → T3.3 | complete |
 | 5 | Speech I/O | T4.1 → T4.2 | complete |
 | 6 | Gradio UI | T5.1 → T5.6 | complete |
-| 7 | Final quality gate | T6.1 | not started |
+| 7 | Final quality gate | T6.1 | complete |
 
 ---
 
