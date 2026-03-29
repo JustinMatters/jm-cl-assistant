@@ -153,7 +153,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Unit testable in isolation (mock the Ollama client)
 
 ### T3.2 — Claude API Client (`src/claude_client.py`)
-**Status:** not started
+**Status:** complete
 
 - `ClaudeClient` class using OpenRouter's OpenAI-compatible REST API (`openai` SDK)
 - `ask(query: str, model: Literal["sonnet", "opus"], history: list) -> str`
