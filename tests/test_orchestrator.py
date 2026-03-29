@@ -25,7 +25,7 @@ class TestOrchestratorRespond:
     def test_complex_sonnet_query_answered_by_claude_sonnet(self, mocker):
         orch = self._make_orchestrator(mocker, "complex_sonnet")
         mock_claude = mocker.patch(
-            "src.orchestrator.ClaudeClient.ask",
+            "src.orchestrator.OpenRouterClient.ask",
             return_value="A detailed answer.",
         )
         response, _ = orch.respond("Explain the French Revolution.", [])
@@ -35,7 +35,7 @@ class TestOrchestratorRespond:
     def test_complex_opus_query_answered_by_claude_opus(self, mocker):
         orch = self._make_orchestrator(mocker, "complex_opus")
         mock_claude = mocker.patch(
-            "src.orchestrator.ClaudeClient.ask",
+            "src.orchestrator.OpenRouterClient.ask",
             return_value="A highly detailed answer.",
         )
         response, _ = orch.respond("Prove the Riemann hypothesis.", [])
@@ -81,7 +81,7 @@ class TestOrchestratorRespond:
             "src.orchestrator.Orchestrator._ollama_respond"
         )
         mocker.patch(
-            "src.orchestrator.ClaudeClient.ask",
+            "src.orchestrator.OpenRouterClient.ask",
             return_value="answer",
         )
         orch.respond("A complex question.", [])
@@ -93,7 +93,7 @@ class TestOrchestratorRespond:
             "src.orchestrator.Orchestrator._ollama_respond"
         )
         mocker.patch(
-            "src.orchestrator.ClaudeClient.ask",
+            "src.orchestrator.OpenRouterClient.ask",
             return_value="answer",
         )
         orch.respond("A very hard question.", [])
@@ -105,6 +105,6 @@ class TestOrchestratorRespond:
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="answer",
         )
-        mock_claude = mocker.patch("src.orchestrator.ClaudeClient.ask")
+        mock_claude = mocker.patch("src.orchestrator.OpenRouterClient.ask")
         orch.respond("A simple question.", [])
         mock_claude.assert_not_called()

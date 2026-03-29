@@ -5,6 +5,8 @@ import openai
 
 SONNET_MODEL_ID = "anthropic/claude-sonnet-4-6"
 OPUS_MODEL_ID = "anthropic/claude-opus-4-6"
+SONNET_DISPLAY_NAME = "Claude Sonnet"
+OPUS_DISPLAY_NAME = "Claude Opus"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 _MODEL_MAP = {
@@ -13,7 +15,7 @@ _MODEL_MAP = {
 }
 
 
-class ClaudeClient:
+class OpenRouterClient:
     def __init__(self) -> None:
         api_key = os.environ["OPENROUTER_API_KEY"]
         self._client = openai.OpenAI(

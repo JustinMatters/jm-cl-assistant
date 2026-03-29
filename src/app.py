@@ -53,7 +53,6 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
         }
 
         chatbot = gr.Chatbot(label="Previous Conversation", height=120)
-        backend_label = gr.Markdown("")
 
         text_input = gr.Textbox(
             placeholder="Type your message...",
@@ -112,60 +111,56 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
 
         # ── Text input flow ─────────────────────────────────────────────────
 
+        def _prefix_last_reply(history: list, response: str) -> list:
+            display = list(history)
+            display[-1] = {
+                "role": "assistant",
+                "content": f"**{orchestrator.last_backend}:** {response}",
+            }
+            return display
+
         def handle_text(query, history, out_mode):
             if not query.strip():
-                return history, history, "", None, ""
+                return history, history, "", None
             response, updated_history = orchestrator.respond(query, history)
-            backend = f"*Answered by: {orchestrator.last_backend}*"
+            display_history = _prefix_last_reply(updated_history, response)
             audio_out = None
             if out_mode in ("speech", "dual"):
                 arr, sr = speaker.synthesize(response)
                 audio_out = (sr, arr)
-            return updated_history, updated_history, "", audio_out, backend
+            return display_history, updated_history, "", audio_out
 
         submit_btn.click(
             handle_text,
             inputs=[text_input, history_state, output_mode],
-            outputs=[
-                chatbot,
-                history_state,
-                text_input,
-                audio_output,
-                backend_label,
-            ],
+            outputs=[chatbot, history_state, text_input, audio_output],
         )
         text_input.submit(
             handle_text,
             inputs=[text_input, history_state, output_mode],
-            outputs=[
-                chatbot,
-                history_state,
-                text_input,
-                audio_output,
-                backend_label,
-            ],
+            outputs=[chatbot, history_state, text_input, audio_output],
         )
 
         # ── Speech input flow ───────────────────────────────────────────────
 
         def handle_audio(audio_data, history, out_mode):
             if audio_data is None:
-                return history, history, None, ""
+                return history, history, None
             sample_rate, audio_array = audio_data
             float_audio = audio_array.astype(np.float32) / 32768.0
             query = transcriber.transcribe(float_audio, sample_rate)
             response, updated_history = orchestrator.respond(query, history)
-            backend = f"*Answered by: {orchestrator.last_backend}*"
+            display_history = _prefix_last_reply(updated_history, response)
             audio_out = None
             if out_mode in ("speech", "dual"):
                 arr, sr = speaker.synthesize(response)
                 audio_out = (sr, arr)
-            return updated_history, updated_history, audio_out, backend
+            return display_history, updated_history, audio_out
 
         audio_input.change(
             handle_audio,
             inputs=[audio_input, history_state, output_mode],
-            outputs=[chatbot, history_state, audio_output, backend_label],
+            outputs=[chatbot, history_state, audio_output],
         )
 
     return demo

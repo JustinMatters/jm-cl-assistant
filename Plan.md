@@ -277,7 +277,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Change the `gr.Chatbot` label from `"Chat"` to `"Previous Conversation"`
 
 ### T7.4 — Prefix Each Reply with Model Name in Bold
-**Status:** not started
+**Status:** complete
 
 - Prepend the responding model name in bold to every assistant reply before
   displaying it in the chatbot (e.g. `**Ollama:** ...`, `**Claude Sonnet:** ...`)

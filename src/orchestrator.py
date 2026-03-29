@@ -1,24 +1,27 @@
 import ollama
 
-from src.claude_client import ClaudeClient
+from src.openrouter_client import (
+    OPUS_DISPLAY_NAME,
+    SONNET_DISPLAY_NAME,
+    OpenRouterClient,
+)
 from src.router import OLLAMA_MODEL, OllamaRouter
-
-_BACKEND_LABELS = {
-    "simple": "Ollama",
-    "complex_sonnet": "Claude Sonnet",
-    "complex_opus": "Claude Opus",
-}
 
 
 class Orchestrator:
     def __init__(self, ollama_model: str = OLLAMA_MODEL) -> None:
         self._router = OllamaRouter(model=ollama_model)
-        self._claude = ClaudeClient()
+        self._claude = OpenRouterClient()
         self.last_backend: str = ""
+        self._backend_labels = {
+            "simple": f"Ollama: {ollama_model.split('/')[-1]}",
+            "complex_sonnet": f"OpenRouter: {SONNET_DISPLAY_NAME}",
+            "complex_opus": f"OpenRouter: {OPUS_DISPLAY_NAME}",
+        }
 
     def respond(self, query: str, history: list) -> tuple[str, list]:
         classification = self._router.classify(query)
-        self.last_backend = _BACKEND_LABELS[classification]
+        self.last_backend = self._backend_labels[classification]
         if classification == "simple":
             response = self._ollama_respond(query, history)
         elif classification == "complex_sonnet":
