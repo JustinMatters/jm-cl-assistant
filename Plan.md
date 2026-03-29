@@ -257,14 +257,14 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ## Phase 7 — Refinements
 
 ### T7.1 — Dark / Light Mode Toggle
-**Status:** not started
+**Status:** complete
 
 - Add a dark/light mode toggle to the Gradio UI
 - Use Gradio's built-in theme support or a `gr.Radio`/`gr.Button` toggle
 - Persist selection within the session via `gr.State`
 
 ### T7.2 — Scale Chat Panel to Fit Viewport
-**Status:** not started
+**Status:** complete
 
 - Adjust the `gr.Chatbot` height so the full app (chat + input + send button) is
   visible without scrolling
@@ -272,38 +272,53 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Use Gradio's `height` parameter or custom CSS as needed
 
 ### T7.3 — Rename Chat Panel to "Previous Conversation"
-**Status:** not started
+**Status:** complete
 
 - Change the `gr.Chatbot` label from `"Chat"` to `"Previous Conversation"`
 
 ### T7.4 — Prefix Each Reply with Model Name in Bold
-**Status:** not started
+**Status:** complete
 
 - Prepend the responding model name in bold to every assistant reply before
   displaying it in the chatbot (e.g. `**Ollama:** ...`, `**Claude Sonnet:** ...`)
 - Source the label from `orchestrator.last_backend`
 
-### T7.5 — Lint and Test
-**Status:** not started
+### T7.5 — Toggle to Show/Hide `<think>` Tag Content
+**Status:** complete
+
+- Add a checkbox toggle next to the Conversation Height dropdown
+- When enabled (default: hidden), strip any text between `<think>` and `</think>`
+  tags from the LLM response before displaying it in the chatbot
+- When disabled, show the full response including chain-of-thought content
+- Apply stripping to the display history only; the clean response (without tags)
+  is already stored in API history
+
+### T7.6 — Lint and Test
+**Status:** complete
 
 - `uv run ruff check . --fix`
 - `uv run ruff format .`
 - `uv run pytest -m "not integration"`
 
-### T7.6 — Add Google-Style Docstrings
-**Status:** not started
+### T7.7 — Add Google-Style Docstrings
+**Status:** complete
 
 - Add docstrings to all public classes and functions across `src/` following the
   [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
-- Cover: `OllamaRouter`, `ClaudeClient`, `Orchestrator`, `WhisperTranscriber`,
+- Cover: `OllamaRouter`, `OpenRouterClient`, `Orchestrator`, `WhisperTranscriber`,
   `KokoroSpeaker`, `build_app`, `main`
 
-### T7.7 — Lint and Test Again
+### T7.8 — Lint and Test Again
 **Status:** not started
 
-- Repeat T7.5 after docstrings are added to confirm nothing was broken
+- Repeat T7.6 after docstrings are added to confirm nothing was broken
+- Extend integration tests to also run as part of the T7.8 gate
+- Auto-start Ollama before integration tests via a session-scoped
+  `ollama_server` fixture in `conftest.py` so manual pre-launch is not required
+- Add `TestEnvironment.test_openrouter_api_key_is_set` integration test that
+  asserts `OPENROUTER_API_KEY` is present and non-empty in the environment
 
-### T7.8 — Update README
+### T7.9 — Update README
 **Status:** not started
 
 - Add running instructions: `uv run python assistant.py` with argparse options
@@ -326,7 +341,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 | 5 | Speech I/O | T4.1 → T4.2 | complete |
 | 6 | Gradio UI | T5.1 → T5.6 | complete |
 | 7 | Quality gate | T6.1 | complete |
-| 8 | Refinements | T7.1 → T7.8 | not started |
+| 8 | Refinements | T7.1 → T7.9 | not started |
 
 ---
 

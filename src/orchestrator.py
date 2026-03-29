@@ -1,24 +1,62 @@
+"""Orchestrator that routes queries to Ollama or Claude via OpenRouter.
+
+Composes OllamaRouter for complexity classification, OpenRouterClient for
+Claude responses, and a direct Ollama client for simple queries.
+"""
+
 import ollama
 
-from src.claude_client import ClaudeClient
+from src.openrouter_client import (
+    OPUS_DISPLAY_NAME,
+    SONNET_DISPLAY_NAME,
+    OpenRouterClient,
+)
 from src.router import OLLAMA_MODEL, OllamaRouter
-
-_BACKEND_LABELS = {
-    "simple": "Ollama",
-    "complex_sonnet": "Claude Sonnet",
-    "complex_opus": "Claude Opus",
-}
 
 
 class Orchestrator:
+    """Routes user queries to the appropriate LLM backend.
+
+    Uses OllamaRouter to classify each query, then dispatches to a local
+    Ollama model for simple queries or to Claude Sonnet/Opus via
+    OpenRouter for complex ones.
+
+    Args:
+        ollama_model: The Ollama model name used for both classification
+          and simple-query responses.  Defaults to OLLAMA_MODEL.
+
+    Attributes:
+        last_backend: Human-readable label of the backend that answered
+          the most recent query (e.g. ``"Ollama: deepseek-r1-..."``).
+    """
+
     def __init__(self, ollama_model: str = OLLAMA_MODEL) -> None:
         self._router = OllamaRouter(model=ollama_model)
-        self._claude = ClaudeClient()
+        self._claude = OpenRouterClient()
         self.last_backend: str = ""
+        self._backend_labels = {
+            "simple": f"Ollama: {ollama_model.split('/')[-1]}",
+            "complex_sonnet": f"OpenRouter: {SONNET_DISPLAY_NAME}",
+            "complex_opus": f"OpenRouter: {OPUS_DISPLAY_NAME}",
+        }
 
     def respond(self, query: str, history: list) -> tuple[str, list]:
+        """Generate a response and update the conversation history.
+
+        Classifies the query, dispatches to the appropriate backend, and
+        appends the user message and assistant response to the history.
+
+        Args:
+            query: The user's input text.
+            history: The current conversation history as a list of
+              ``{"role": ..., "content": ...}`` dicts.
+
+        Returns:
+            A tuple of ``(response_text, updated_history)`` where
+            ``updated_history`` includes the new user and assistant turns.
+        """
         classification = self._router.classify(query)
-        self.last_backend = _BACKEND_LABELS[classification]
+        self.last_backend = self._backend_labels[classification]
         if classification == "simple":
             response = self._ollama_respond(query, history)
         elif classification == "complex_sonnet":

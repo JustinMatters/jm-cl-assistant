@@ -1,8 +1,16 @@
+"""Gradio web interface for the JM Assistant chatbot.
+
+Provides a Blocks-based UI with text and speech input/output modes,
+dark/light theme toggle, configurable conversation height, and a toggle
+to show or hide LLM chain-of-thought ``<think>`` tags.
+"""
+
 import argparse
 
 import gradio as gr
 import numpy as np
 
+from src.helpers import strip_think_tags
 from src.orchestrator import Orchestrator
 from src.speech_input import WhisperTranscriber
 from src.speech_output import KokoroSpeaker
@@ -12,12 +20,35 @@ WHISPER_MODEL_DEFAULT = "medium"
 
 
 def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
+    """Construct and return the Gradio Blocks application.
+
+    Instantiates the orchestrator, transcriber, and speaker, then wires
+    all UI components and event handlers together.
+
+    Args:
+        whisper_model: Whisper model size to load for speech input
+          (e.g. ``"tiny"``, ``"base"``, ``"medium"``).
+        ollama_model: Ollama model name used for routing and simple
+          query responses.
+
+    Returns:
+        A configured ``gr.Blocks`` instance ready to launch.
+    """
     orchestrator = Orchestrator(ollama_model=ollama_model)
     transcriber = WhisperTranscriber(model=whisper_model)
     speaker = KokoroSpeaker()
 
     with gr.Blocks(title="JM Assistant") as demo:
-        gr.Markdown("# JM Assistant")
+        with gr.Row():
+            gr.Markdown("# JM Assistant")
+            dark_toggle = gr.Button("🌙 Dark / ☀️ Light", scale=0, min_width=160)
+
+        dark_toggle.click(
+            fn=None,
+            inputs=None,
+            outputs=None,
+            js="() => document.documentElement.classList.toggle('dark')",
+        )
 
         with gr.Row():
             input_mode = gr.Radio(
@@ -30,9 +61,24 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
                 value="text",
                 label="Output Mode",
             )
+            height_selector = gr.Dropdown(
+                choices=["3 lines", "5 lines", "10 lines", "20 lines"],
+                value="3 lines",
+                label="Conversation Height",
+            )
+            show_think = gr.Checkbox(
+                value=True,
+                label="Show <think> tags",
+            )
 
-        chatbot = gr.Chatbot(label="Chat")
-        backend_label = gr.Markdown("")
+        _LINE_HEIGHTS = {
+            "3 lines": 120,
+            "5 lines": 200,
+            "10 lines": 320,
+            "20 lines": 620,
+        }
+
+        chatbot = gr.Chatbot(label="Previous Conversation", height=120)
 
         text_input = gr.Textbox(
             placeholder="Type your message...",
@@ -74,74 +120,87 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
             inputs=input_mode,
             outputs=[text_input, submit_btn, audio_input],
         )
+
+        def set_chatbot_height(choice):
+            return gr.update(height=_LINE_HEIGHTS[choice])
+
         output_mode.change(
             toggle_output_mode,
             inputs=output_mode,
             outputs=audio_output,
         )
+        height_selector.change(
+            set_chatbot_height,
+            inputs=height_selector,
+            outputs=chatbot,
+        )
 
         # ── Text input flow ─────────────────────────────────────────────────
 
-        def handle_text(query, history, out_mode):
+        def _prefix_last_reply(
+            history: list, response: str, show: bool
+        ) -> list:
+            content = response if show else strip_think_tags(response)
+            display = list(history)
+            display[-1] = {
+                "role": "assistant",
+                "content": f"**{orchestrator.last_backend}:** {content}",
+            }
+            return display
+
+        def handle_text(query, history, out_mode, show):
             if not query.strip():
-                return history, history, "", None, ""
+                return history, history, "", None
             response, updated_history = orchestrator.respond(query, history)
-            backend = f"*Answered by: {orchestrator.last_backend}*"
+            display_history = _prefix_last_reply(
+                updated_history, response, show
+            )
             audio_out = None
             if out_mode in ("speech", "dual"):
                 arr, sr = speaker.synthesize(response)
                 audio_out = (sr, arr)
-            return updated_history, updated_history, "", audio_out, backend
+            return display_history, updated_history, "", audio_out
 
         submit_btn.click(
             handle_text,
-            inputs=[text_input, history_state, output_mode],
-            outputs=[
-                chatbot,
-                history_state,
-                text_input,
-                audio_output,
-                backend_label,
-            ],
+            inputs=[text_input, history_state, output_mode, show_think],
+            outputs=[chatbot, history_state, text_input, audio_output],
         )
         text_input.submit(
             handle_text,
-            inputs=[text_input, history_state, output_mode],
-            outputs=[
-                chatbot,
-                history_state,
-                text_input,
-                audio_output,
-                backend_label,
-            ],
+            inputs=[text_input, history_state, output_mode, show_think],
+            outputs=[chatbot, history_state, text_input, audio_output],
         )
 
         # ── Speech input flow ───────────────────────────────────────────────
 
-        def handle_audio(audio_data, history, out_mode):
+        def handle_audio(audio_data, history, out_mode, show):
             if audio_data is None:
-                return history, history, None, ""
+                return history, history, None
             sample_rate, audio_array = audio_data
             float_audio = audio_array.astype(np.float32) / 32768.0
             query = transcriber.transcribe(float_audio, sample_rate)
             response, updated_history = orchestrator.respond(query, history)
-            backend = f"*Answered by: {orchestrator.last_backend}*"
+            display_history = _prefix_last_reply(
+                updated_history, response, show
+            )
             audio_out = None
             if out_mode in ("speech", "dual"):
                 arr, sr = speaker.synthesize(response)
                 audio_out = (sr, arr)
-            return updated_history, updated_history, audio_out, backend
+            return display_history, updated_history, audio_out
 
         audio_input.change(
             handle_audio,
-            inputs=[audio_input, history_state, output_mode],
-            outputs=[chatbot, history_state, audio_output, backend_label],
+            inputs=[audio_input, history_state, output_mode, show_think],
+            outputs=[chatbot, history_state, audio_output],
         )
 
     return demo
 
 
 def main():
+    """Parse CLI arguments and launch the Gradio app."""
     parser = argparse.ArgumentParser(description="JM Assistant")
     parser.add_argument(
         "--whisper-model",

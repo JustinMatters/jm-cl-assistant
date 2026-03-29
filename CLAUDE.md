@@ -7,8 +7,8 @@ Hybrid AI chatbot that routes queries between a local Ollama model and Claude
 ## Architecture
 - `src/router.py` — OllamaRouter: classifies query complexity (simple /
   complex_sonnet / complex_opus)
-- `src/claude_client.py` — ClaudeClient: wraps anthropic SDK, targets
-  claude-sonnet-4-6 and claude-opus-4-6
+- `src/openrouter_client.py` — OpenRouterClient: wraps OpenAI-compatible REST API,
+  targets claude-sonnet-4-6 and claude-opus-4-6 via OpenRouter
 - `src/orchestrator.py` — Orchestrator: composes router + clients, manages
   conversation history
 - `src/speech_input.py` — WhisperTranscriber: STT via openai-whisper
@@ -36,14 +36,14 @@ The following are currently hardcoded defaults pending argparse implementation:
 These will become `--whisper-model` and `--ollama-model` CLI arguments in T5.6.
 
 ## Claude Skills to Use
-- Do NOT use the `claude-api` skill for `src/claude_client.py` — OpenRouter
+- Do NOT use the `claude-api` skill for `src/openrouter_client.py` — OpenRouter
   uses an OpenAI-compatible REST API, not the Anthropic SDK directly
 - Invoke `update-config` skill when modifying hooks or settings
 
 ## Commands
 ```bash
 uv sync                          # install dependencies
-uv run python src/app.py         # run the app
+uv run python assistant.py       # run the app
 uv run pytest                    # run unit tests
 uv run pytest -m integration     # run integration tests
 uv run ruff check .              # lint
