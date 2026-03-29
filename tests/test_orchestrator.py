@@ -33,7 +33,7 @@ class TestOrchestratorRespond:
         response, _ = orch.respond("What is the capital of France?", [])
         mock_ollama.assert_called_once()
         _, _, model_arg = mock_ollama.call_args.args
-        assert model_arg == orch._router._model
+        assert model_arg == orch._ollama_model
         assert response == "Paris"
 
     def test_complex_sonnet_query_answered_by_claude_sonnet(self, mocker):

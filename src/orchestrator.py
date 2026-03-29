@@ -22,10 +22,10 @@ class Orchestrator:
     queries, or to Claude Sonnet/Opus via OpenRouter for complex ones.
 
     Args:
-        ollama_model: The Ollama model name used for classification and
-          simple-query responses.  Defaults to OLLAMA_MODEL.
-        fast_model: The Ollama model name used for trivial queries.
-          Defaults to OLLAMA_FAST_MODEL.
+        ollama_model: The Ollama model name used for simple-query responses.
+          Defaults to OLLAMA_MODEL.
+        fast_model: The Ollama model name used for routing/classification
+          and trivial-query responses.  Defaults to OLLAMA_FAST_MODEL.
 
     Attributes:
         last_backend: Human-readable label of the backend that answered
@@ -37,9 +37,10 @@ class Orchestrator:
         ollama_model: str = OLLAMA_MODEL,
         fast_model: str = OLLAMA_FAST_MODEL,
     ) -> None:
-        self._router = OllamaRouter(model=ollama_model)
+        self._router = OllamaRouter(model=fast_model)
         self._claude = OpenRouterClient()
         self._fast_model = fast_model
+        self._ollama_model = ollama_model
         self.last_backend: str = ""
         self._backend_labels = {
             "trivial_ollama": f"Ollama: {fast_model.split('/')[-1]}",
@@ -68,7 +69,7 @@ class Orchestrator:
         if classification == "trivial_ollama":
             response = self._ollama_respond(query, history, self._fast_model)
         elif classification == "simple_ollama":
-            response = self._ollama_respond(query, history, self._router._model)
+            response = self._ollama_respond(query, history, self._ollama_model)
         elif classification == "complex_sonnet":
             response = self._claude.ask(query, "sonnet", history)
         else:
