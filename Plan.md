@@ -312,6 +312,11 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 **Status:** not started
 
 - Repeat T7.6 after docstrings are added to confirm nothing was broken
+- Extend integration tests to also run as part of the T7.8 gate
+- Auto-start Ollama before integration tests via a session-scoped
+  `ollama_server` fixture in `conftest.py` so manual pre-launch is not required
+- Add `TestEnvironment.test_openrouter_api_key_is_set` integration test that
+  asserts `OPENROUTER_API_KEY` is present and non-empty in the environment
 
 ### T7.9 — Update README
 **Status:** not started
