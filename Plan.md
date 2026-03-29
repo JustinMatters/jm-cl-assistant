@@ -242,7 +242,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 
 ---
 
-## Phase 6 — Final Quality Gate
+## Phase 6 — Quality Gate
 
 ### T6.1 — Ruff Lint & Format Pass
 **Status:** complete
@@ -251,6 +251,67 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Run `uv run ruff format .`
 - Resolve all remaining violations manually
 - Confirms codebase is clean before considering the project shippable
+
+---
+
+## Phase 7 — Refinements
+
+### T7.1 — Dark / Light Mode Toggle
+**Status:** not started
+
+- Add a dark/light mode toggle to the Gradio UI
+- Use Gradio's built-in theme support or a `gr.Radio`/`gr.Button` toggle
+- Persist selection within the session via `gr.State`
+
+### T7.2 — Scale Chat Panel to Fit Viewport
+**Status:** not started
+
+- Adjust the `gr.Chatbot` height so the full app (chat + input + send button) is
+  visible without scrolling
+- Chat panel must show at least 5 lines of conversation before scrolling internally
+- Use Gradio's `height` parameter or custom CSS as needed
+
+### T7.3 — Rename Chat Panel to "Previous Conversation"
+**Status:** not started
+
+- Change the `gr.Chatbot` label from `"Chat"` to `"Previous Conversation"`
+
+### T7.4 — Prefix Each Reply with Model Name in Bold
+**Status:** not started
+
+- Prepend the responding model name in bold to every assistant reply before
+  displaying it in the chatbot (e.g. `**Ollama:** ...`, `**Claude Sonnet:** ...`)
+- Source the label from `orchestrator.last_backend`
+
+### T7.5 — Lint and Test
+**Status:** not started
+
+- `uv run ruff check . --fix`
+- `uv run ruff format .`
+- `uv run pytest -m "not integration"`
+
+### T7.6 — Add Google-Style Docstrings
+**Status:** not started
+
+- Add docstrings to all public classes and functions across `src/` following the
+  [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
+- Cover: `OllamaRouter`, `ClaudeClient`, `Orchestrator`, `WhisperTranscriber`,
+  `KokoroSpeaker`, `build_app`, `main`
+
+### T7.7 — Lint and Test Again
+**Status:** not started
+
+- Repeat T7.5 after docstrings are added to confirm nothing was broken
+
+### T7.8 — Update README
+**Status:** not started
+
+- Add running instructions: `uv run python assistant.py` with argparse options
+- Add a note about the Whisper model download delay on first run (~1.5 GB for
+  `medium`, instant on subsequent runs as it is cached in `~/.cache/whisper/`)
+- Verify and document kokoro-onnx model file download requirements (model files
+  are large binaries and currently gitignored — confirm exact filenames, download
+  source, and placement instructions)
 
 ---
 
@@ -264,7 +325,8 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 | 4 | Backend core | T3.1 → T3.3 | complete |
 | 5 | Speech I/O | T4.1 → T4.2 | complete |
 | 6 | Gradio UI | T5.1 → T5.6 | complete |
-| 7 | Final quality gate | T6.1 | complete |
+| 7 | Quality gate | T6.1 | complete |
+| 8 | Refinements | T7.1 → T7.8 | not started |
 
 ---
 

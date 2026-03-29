@@ -13,12 +13,6 @@ dependencies = [
     "sounddevice>=0.5.5",
 ]
 
-[project.scripts]
-jm-cl-assistant = "src.app:main"
-
-[tool.uv]
-package = true
-
 [tool.ruff]
 line-length = 80
 target-version = "py313"

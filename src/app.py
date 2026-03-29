@@ -31,7 +31,7 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
                 label="Output Mode",
             )
 
-        chatbot = gr.Chatbot(type="messages", label="Chat")
+        chatbot = gr.Chatbot(label="Chat")
         backend_label = gr.Markdown("")
 
         text_input = gr.Textbox(
@@ -156,7 +156,3 @@ def main():
     args = parser.parse_args()
     demo = build_app(args.whisper_model, args.ollama_model)
     demo.launch()
-
-
-if __name__ == "__main__":
-    main()
