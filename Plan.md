@@ -431,9 +431,64 @@ options covering the most common accent/gender combinations:
 
 ---
 
-## Phase 9 — Speech to Text Debugging
+## Phase 9 — Routing Tiers
 
-### T9.1 — Check STT via Whisper Works End-to-End
+### T9.1 — Identify Fast Small Local Model
+**Status:** not started
+
+Research and select a very fast, lightweight Ollama model suitable for
+handling trivial queries (e.g. simple greetings, single-fact lookups,
+arithmetic). Criteria:
+
+- Low VRAM footprint (fits alongside Whisper medium on a 16 GB GPU)
+- Fast time-to-first-token (noticeably quicker than the 8B reasoning model)
+- Sufficient quality for trivial responses
+
+Document the chosen model name and pull command in the README.
+
+### T9.2 — Add Trivial Routing Tier (Small Fast Model)
+**Status:** not started
+
+Introduce a new routing classification `"trivial"` handled by the small fast
+model identified in T9.1. All queries are routed to this model first; only
+queries classified as needing more capability are escalated.
+
+Current routing:
+```
+simple        → sam860/deepseek-r1-0528-qwen3:8b
+complex_sonnet → Claude Sonnet
+complex_opus   → Claude Opus
+```
+
+New routing:
+```
+trivial        → <small fast model from T9.1>
+simple         → sam860/deepseek-r1-0528-qwen3:8b
+complex_sonnet → Claude Sonnet
+complex_opus   → Claude Opus
+```
+
+- Add `OLLAMA_FAST_MODEL` constant to `src/router.py` (hardcoded until a
+  future argparse ticket)
+- Update `OllamaRouter.classify()` to return the new `"trivial"` tier
+- Update `Orchestrator` to dispatch `"trivial"` to the fast model
+- Update router and orchestrator unit tests to cover the new tier
+- Update the `last_backend` label shown in the chat
+
+### T9.3 — Update Tests and README for New Routing Tiers
+**Status:** not started
+
+- Extend router unit tests to assert correct classification for trivially
+  simple queries (e.g. "hi", "what is 2+2")
+- Extend orchestrator unit tests to confirm the fast model is called for
+  `"trivial"` and the deepseek model for `"simple"`
+- Update README routing diagram and model reference table
+
+---
+
+## Phase 10 — Speech to Text Debugging
+
+### T10.1 — Check STT via Whisper Works End-to-End
 **Status:** not started
 
 - Verify the browser can access the microphone via the `gr.Audio` component
@@ -456,8 +511,9 @@ options covering the most common accent/gender combinations:
 | 5 | Gradio UI | T5.1 → T5.6 | complete |
 | 6 | Quality gate | T6.1 | complete |
 | 7 | Refinements | T7.1 → T7.9 | complete |
-| 8 | Text to Speech Debugging | T8.1 → T8.6 | in progress |
-| 9 | Speech to Text Debugging | T9.1 | not started |
+| 8 | Text to Speech Debugging | T8.1 → T8.8 | complete |
+| 9 | Routing Tiers | T9.1 → T9.3 | not started |
+| 10 | Speech to Text Debugging | T10.1 | not started |
 
 ---
 
