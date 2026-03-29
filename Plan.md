@@ -143,7 +143,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ## Phase 3 — Core Backend Modules
 
 ### T3.1 — Ollama Router (`src/router.py`)
-**Status:** not started
+**Status:** complete
 
 - `OllamaRouter` class wrapping the `ollama` Python client
 - `classify(query: str) -> Literal["simple", "complex_sonnet", "complex_opus"]`

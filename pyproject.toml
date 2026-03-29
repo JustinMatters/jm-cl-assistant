@@ -29,6 +29,7 @@ line-ending = "auto"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+pythonpath = ["."]
 markers = ["integration: mark test as requiring live Ollama instance"]
 
 [dependency-groups]
