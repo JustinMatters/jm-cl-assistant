@@ -504,6 +504,23 @@ complex_opus   → Claude Opus
 - Add a project introduction section to the README explaining that this
   project is an experiment in using Claude Code as a development tool
 
+### T9.4 — Use Fast Model for Routing/Classification
+**Status:** complete
+
+The router was using the 8B model for classification, making every query
+incur a slow 8B inference call before the fast model even ran. Fixed by
+switching the router to use `qwen3:1.7b` for classification too.
+
+- Change `OllamaRouter` in `Orchestrator.__init__` to use `fast_model`
+  instead of `ollama_model`
+- Store `ollama_model` separately as `self._ollama_model` so `simple_ollama`
+  responses still use the 8B model
+- Update `_ollama_respond` call for `simple_ollama` to use
+  `self._ollama_model` instead of `self._router._model`
+- Update docstrings to accurately describe each model's role
+- Add integration tests verifying both models are pulled and each tier
+  routes to the correct model
+
 ---
 
 ## Phase 10 — Speech to Text Debugging
@@ -532,7 +549,7 @@ complex_opus   → Claude Opus
 | 6 | Quality gate | T6.1 | complete |
 | 7 | Refinements | T7.1 → T7.9 | complete |
 | 8 | Text to Speech Debugging | T8.1 → T8.8 | complete |
-| 9 | Routing Tiers | T9.1 → T9.3 | not started |
+| 9 | Routing Tiers | T9.1 → T9.4 | complete |
 | 10 | Speech to Text Debugging | T10.1 | not started |
 
 ---
