@@ -257,7 +257,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ## Phase 7 — Refinements
 
 ### T7.1 — Dark / Light Mode Toggle
-**Status:** not started
+**Status:** complete
 
 - Add a dark/light mode toggle to the Gradio UI
 - Use Gradio's built-in theme support or a `gr.Radio`/`gr.Button` toggle

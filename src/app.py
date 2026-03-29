@@ -17,7 +17,16 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
     speaker = KokoroSpeaker()
 
     with gr.Blocks(title="JM Assistant") as demo:
-        gr.Markdown("# JM Assistant")
+        with gr.Row():
+            gr.Markdown("# JM Assistant")
+            dark_toggle = gr.Button("🌙 Dark / ☀️ Light", scale=0, min_width=160)
+
+        dark_toggle.click(
+            fn=None,
+            inputs=None,
+            outputs=None,
+            js="() => document.documentElement.classList.toggle('dark')",
+        )
 
         with gr.Row():
             input_mode = gr.Radio(
