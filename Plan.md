@@ -330,27 +330,10 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 
 ---
 
-## Implementation Order Summary
-
-| Order | Phase | Tickets | Status |
-|-------|-------|---------|--------|
-| 0 | Bootstrap | T0.1 → T0.5 | complete |
-| 1 | Dependencies & CI | T1.1 → T1.4 | complete |
-| 2 | Tests | T2.1 → T2.5 | complete |
-| 3 | Backend core | T3.1 → T3.3 | complete |
-| 4 | Speech I/O | T4.1 → T4.2 | complete |
-| 5 | Gradio UI | T5.1 → T5.6 | complete |
-| 6 | Quality gate | T6.1 | complete |
-| 7 | Refinements | T7.1 → T7.9 | complete |
-| 8 | Text to Speech Debugging | T8.1 → T8.3 | not started |
-| 9 | Speech to Text Debugging | T9.1 | not started |
-
----
-
 ## Phase 8 — Text to Speech Debugging
 
 ### T8.1 — Fix Kokoro TTS Initialisation
-**Status:** not started
+**Status:** complete
 
 The installed version of `kokoro-onnx` requires `model_path` and
 `voices_path` as positional arguments to `Kokoro.__init__()`, but
@@ -362,28 +345,89 @@ TypeError: Kokoro.__init__() missing 2 required positional arguments:
 'model_path' and 'voices_path'
 ```
 
+Also fixed: `Kokoro.create()` requires a `voice` argument. Added `voice`
+(default: `"af_heart"`) and `speed` (default: `1.0`) as constructor args.
+
 - Investigate the current `kokoro-onnx` API to confirm required arguments
 - Update `KokoroSpeaker` to pass the correct model file paths
   (expected files: `kokoro-v1.0.onnx` and `voices-v1.0.bin` in project root
   per the README)
-- Make the paths configurable (constructor arguments with sensible defaults)
+- Make the paths, voice, and speed configurable (constructor arguments with
+  sensible defaults)
 - Update or add unit tests to cover the new constructor signature
 
-### T8.2 — Manual Check of TTS and Resolve Any Bugs
-**Status:** not started
+### T8.2 — Fix Speech Not Obeying `<think>` Tag Toggle
+**Status:** complete
 
-- Run the app and manually test the speech output mode end-to-end
-- Verify audio plays correctly in the browser via the `gr.Audio` component
-- Identify and fix any bugs found during testing
-- Document any issues resolved
+Speech synthesis was always passed the raw LLM response, ignoring the
+"Show `<think>` tags" toggle. When the toggle was off, the TTS would still
+read out chain-of-thought content.
 
-### T8.3 — Manual Check of Dual Mode and Resolve Any Bugs
-**Status:** not started
+- Apply the same `show` logic to speech text as to the chat display:
+  `response if show else strip_think_tags(response)`
+- Fix applied in both `handle_text` and `handle_audio` in `src/app.py`
 
-- Run the app and manually test dual output mode (text + speech simultaneously)
-- Verify both the chatbot text and audio output are populated correctly
-- Identify and fix any bugs found during testing
-- Document any issues resolved
+### T8.3 — Fix Float32 Audio Warning from Gradio
+**Status:** complete
+
+Gradio emitted a `UserWarning` about auto-converting float32 audio to int16.
+Kokoro returns float32 samples in `[-1, 1]`; Gradio's `gr.Audio` expects int16.
+
+- Convert audio array before returning to Gradio:
+  `(arr * 32767).astype(np.int16)`
+- Fix applied in both `handle_text` and `handle_audio` in `src/app.py`
+
+### T8.4 — Strip Markdown Before TTS Synthesis
+**Status:** complete
+
+Models that return Markdown-formatted responses caused TTS to vocalise
+symbols (e.g. "asterisk asterisk"). Markdown should be stripped before
+passing text to Kokoro; the chat display keeps the formatted version.
+
+- Add `strip_markdown(text: str) -> str` to `src/helpers.py`
+- Call `strip_markdown(speech_text)` in both `handle_text` and
+  `handle_audio` in `src/app.py` before `speaker.synthesize()`
+- Add unit tests in `tests/test_helpers.py`
+
+### T8.5 — Manual Check of TTS and Resolve Any Bugs
+**Status:** complete
+
+### T8.6 — Manual Check of Dual Mode and Resolve Any Bugs
+**Status:** complete
+
+### T8.7 — Simplify Output Mode Radio to Two Options
+**Status:** complete
+
+Text is always printed to the conversation panel, making a separate "dual"
+mode redundant. Simplify output mode to two options:
+
+- `text` — response shown in chat only, no audio
+- `text and speech` — response shown in chat AND spoken via Kokoro
+
+- Change `gr.Radio` choices to `["text", "text and speech"]`, default `"text"`
+- Update `toggle_output_mode` and both `handle_text` / `handle_audio` to
+  check `out_mode == "text and speech"` instead of
+  `out_mode in ("speech", "dual")`
+- Remove any remaining references to `"speech"` and `"dual"` output modes
+
+### T8.8 — Voice Selection Dropdown
+**Status:** complete
+
+Add a `gr.Dropdown` to the UI letting the user pick a Kokoro voice. Four
+options covering the most common accent/gender combinations:
+
+| Label | Voice ID | Description |
+|-------|----------|-------------|
+| American Female (default) | `af_heart` | Current default |
+| American Male | `am_michael` | |
+| British Female | `bf_emma` | |
+| British Male | `bm_george` | |
+
+- Add the dropdown to the controls row in `src/app.py`
+- Pass the selected voice ID to `KokoroSpeaker` — either re-instantiate
+  with the new voice or add a `voice` setter / update the voice attribute
+  directly before synthesis
+- Default selection: `af_heart` (American Female)
 
 ---
 
@@ -397,6 +441,23 @@ TypeError: Kokoro.__init__() missing 2 required positional arguments:
 - Verify Whisper converts speech to text without error
 - Verify the transcribed text is displayed correctly as the user message in the chat
 - Identify and fix any bugs found at each stage
+
+---
+
+## Implementation Order Summary
+
+| Order | Phase | Tickets | Status |
+|-------|-------|---------|--------|
+| 0 | Bootstrap | T0.1 → T0.5 | complete |
+| 1 | Dependencies & CI | T1.1 → T1.4 | complete |
+| 2 | Tests | T2.1 → T2.5 | complete |
+| 3 | Backend core | T3.1 → T3.3 | complete |
+| 4 | Speech I/O | T4.1 → T4.2 | complete |
+| 5 | Gradio UI | T5.1 → T5.6 | complete |
+| 6 | Quality gate | T6.1 | complete |
+| 7 | Refinements | T7.1 → T7.9 | complete |
+| 8 | Text to Speech Debugging | T8.1 → T8.6 | in progress |
+| 9 | Speech to Text Debugging | T9.1 | not started |
 
 ---
 

@@ -1,6 +1,6 @@
 # jm-cl-assistant
 
-A hybrid AI chatbot interface that routes queries intelligently between a local Ollama model and Claude (Sonnet/Opus) via the Anthropic API.
+A hybrid AI chatbot interface that routes queries intelligently between a local Ollama model and Claude (Sonnet/Opus) via OpenRouter's OpenAI-compatible API.
 
 ## Architecture
 

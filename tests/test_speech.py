@@ -116,3 +116,64 @@ class TestKokoroSpeaker:
         speaker.synthesize("Hello")
         speaker.synthesize("World")
         mock_kokoro_cls.assert_called_once()
+
+    def test_default_paths_passed_to_kokoro(self, mocker):
+        mock_kokoro_cls = mocker.patch("src.speech_output.Kokoro")
+        mock_kokoro_cls.return_value.create.return_value = (
+            np.zeros(100, dtype=np.float32),
+            24000,
+        )
+        speaker = KokoroSpeaker()
+        speaker.synthesize("Hello")
+        mock_kokoro_cls.assert_called_once_with(
+            "kokoro-v1.0.onnx", "voices-v1.0.bin"
+        )
+
+    def test_custom_paths_passed_to_kokoro(self, mocker):
+        mock_kokoro_cls = mocker.patch("src.speech_output.Kokoro")
+        mock_kokoro_cls.return_value.create.return_value = (
+            np.zeros(100, dtype=np.float32),
+            24000,
+        )
+        speaker = KokoroSpeaker(
+            model_path="custom.onnx", voices_path="custom.bin"
+        )
+        speaker.synthesize("Hello")
+        mock_kokoro_cls.assert_called_once_with("custom.onnx", "custom.bin")
+
+    def test_create_called_with_voice_and_speed(self, mocker):
+        mock_kokoro_cls = mocker.patch("src.speech_output.Kokoro")
+        mock_instance = mock_kokoro_cls.return_value
+        mock_instance.create.return_value = (
+            np.zeros(100, dtype=np.float32),
+            24000,
+        )
+        speaker = KokoroSpeaker(voice="am_adam", speed=1.2)
+        speaker.synthesize("Hello")
+        mock_instance.create.assert_called_once_with(
+            "Hello", voice="am_adam", speed=1.2
+        )
+
+    def test_voice_override_passed_to_create(self, mocker):
+        mock_kokoro_cls = mocker.patch("src.speech_output.Kokoro")
+        mock_instance = mock_kokoro_cls.return_value
+        mock_instance.create.return_value = (
+            np.zeros(100, dtype=np.float32),
+            24000,
+        )
+        speaker = KokoroSpeaker()
+        speaker.synthesize("Hello", voice="am_michael")
+        _, kwargs = mock_instance.create.call_args
+        assert kwargs["voice"] == "am_michael"
+
+    def test_default_voice_is_af_heart(self, mocker):
+        mock_kokoro_cls = mocker.patch("src.speech_output.Kokoro")
+        mock_instance = mock_kokoro_cls.return_value
+        mock_instance.create.return_value = (
+            np.zeros(100, dtype=np.float32),
+            24000,
+        )
+        speaker = KokoroSpeaker()
+        speaker.synthesize("Hello")
+        _, kwargs = mock_instance.create.call_args
+        assert kwargs["voice"] == "af_heart"

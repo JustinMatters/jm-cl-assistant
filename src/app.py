@@ -10,13 +10,25 @@ import argparse
 import gradio as gr
 import numpy as np
 
-from src.helpers import strip_think_tags
+from src.helpers import (
+    strip_markdown,
+    strip_think_tags,
+    suppress_connection_reset_errors,
+    to_wav_bytes,
+)
 from src.orchestrator import Orchestrator
 from src.speech_input import WhisperTranscriber
 from src.speech_output import KokoroSpeaker
 
 OLLAMA_MODEL_DEFAULT = "sam860/deepseek-r1-0528-qwen3:8b"
 WHISPER_MODEL_DEFAULT = "medium"
+
+VOICES = [
+    ("American Female", "af_heart"),
+    ("American Male", "am_michael"),
+    ("British Female", "bf_emma"),
+    ("British Male", "bm_george"),
+]
 
 
 def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
@@ -57,7 +69,7 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
                 label="Input Mode",
             )
             output_mode = gr.Radio(
-                choices=["text", "speech", "dual"],
+                choices=["text", "text and speech"],
                 value="text",
                 label="Output Mode",
             )
@@ -69,6 +81,11 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
             show_think = gr.Checkbox(
                 value=True,
                 label="Show <think> tags",
+            )
+            voice_selector = gr.Dropdown(
+                choices=VOICES,
+                value="af_heart",
+                label="Voice",
             )
 
         _LINE_HEIGHTS = {
@@ -113,7 +130,7 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
             )
 
         def toggle_output_mode(mode):
-            return gr.update(visible=mode in ("speech", "dual"))
+            return gr.update(visible=mode == "text and speech")
 
         input_mode.change(
             toggle_input_mode,
@@ -148,7 +165,7 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
             }
             return display
 
-        def handle_text(query, history, out_mode, show):
+        def handle_text(query, history, out_mode, show, voice):
             if not query.strip():
                 return history, history, "", None
             response, updated_history = orchestrator.respond(query, history)
@@ -156,25 +173,40 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
                 updated_history, response, show
             )
             audio_out = None
-            if out_mode in ("speech", "dual"):
-                arr, sr = speaker.synthesize(response)
-                audio_out = (sr, arr)
+            if out_mode == "text and speech":
+                speech_text = response if show else strip_think_tags(response)
+                arr, sr = speaker.synthesize(
+                    strip_markdown(speech_text), voice=voice
+                )
+                audio_out = to_wav_bytes(arr, sr)
             return display_history, updated_history, "", audio_out
 
         submit_btn.click(
             handle_text,
-            inputs=[text_input, history_state, output_mode, show_think],
+            inputs=[
+                text_input,
+                history_state,
+                output_mode,
+                show_think,
+                voice_selector,
+            ],
             outputs=[chatbot, history_state, text_input, audio_output],
         )
         text_input.submit(
             handle_text,
-            inputs=[text_input, history_state, output_mode, show_think],
+            inputs=[
+                text_input,
+                history_state,
+                output_mode,
+                show_think,
+                voice_selector,
+            ],
             outputs=[chatbot, history_state, text_input, audio_output],
         )
 
         # ── Speech input flow ───────────────────────────────────────────────
 
-        def handle_audio(audio_data, history, out_mode, show):
+        def handle_audio(audio_data, history, out_mode, show, voice):
             if audio_data is None:
                 return history, history, None
             sample_rate, audio_array = audio_data
@@ -185,14 +217,23 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
                 updated_history, response, show
             )
             audio_out = None
-            if out_mode in ("speech", "dual"):
-                arr, sr = speaker.synthesize(response)
-                audio_out = (sr, arr)
+            if out_mode == "text and speech":
+                speech_text = response if show else strip_think_tags(response)
+                arr, sr = speaker.synthesize(
+                    strip_markdown(speech_text), voice=voice
+                )
+                audio_out = to_wav_bytes(arr, sr)
             return display_history, updated_history, audio_out
 
         audio_input.change(
             handle_audio,
-            inputs=[audio_input, history_state, output_mode, show_think],
+            inputs=[
+                audio_input,
+                history_state,
+                output_mode,
+                show_think,
+                voice_selector,
+            ],
             outputs=[chatbot, history_state, audio_output],
         )
 
@@ -213,5 +254,6 @@ def main():
         help="Ollama model name",
     )
     args = parser.parse_args()
+    suppress_connection_reset_errors()
     demo = build_app(args.whisper_model, args.ollama_model)
     demo.launch()
