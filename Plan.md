@@ -195,7 +195,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ## Phase 5 — Gradio Interface
 
 ### T5.1 — App Skeleton (`src/app.py`)
-**Status:** not started
+**Status:** complete
 
 - Gradio `Blocks` layout
 - Top-level mode toggles: **Input Mode** (`text` | `speech`) and **Output Mode** (`text` | `speech` | `dual`)
@@ -203,35 +203,35 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Submit/record controls
 
 ### T5.2 — Text Input Flow
-**Status:** not started
+**Status:** complete
 
 - `gr.Textbox` for typed input
 - On submit: `Orchestrator.respond()` → display in chatbot
 - Show routing decision as a subtle label (e.g. "Answered by: Ollama / Sonnet / Opus")
 
 ### T5.3 — Speech Input Flow
-**Status:** not started
+**Status:** complete
 
 - `gr.Audio(source="microphone")` component shown when input mode = speech
 - On audio captured: `WhisperTranscriber.transcribe()` → feed transcript to orchestrator
 - Display transcript in chatbot as user message
 
 ### T5.4 — Speech Output Flow
-**Status:** not started
+**Status:** complete
 
 - When output mode = `speech` or `dual`: pipe response text through `KokoroSpeaker.synthesize()`
 - Play via `gr.Audio(autoplay=True)`
 - `dual` mode renders both text in chatbot and audio playback simultaneously
 
 ### T5.5 — Mode Switching Logic
-**Status:** not started
+**Status:** complete
 
 - `gr.Radio` components for input/output mode
 - Gradio `visible` updates to show/hide `gr.Textbox` vs `gr.Audio` input
 - All state managed through `gr.State`
 
 ### T5.6 — Argparse Runtime Configuration (`src/app.py`)
-**Status:** not started
+**Status:** complete
 
 - Add `argparse` to `src/app.py` entry point
 - `--whisper-model` — Whisper model size (default: `medium`)
@@ -260,10 +260,10 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 |-------|-------|---------|--------|
 | 1 | Bootstrap | T0.1 → T0.5 | complete |
 | 2 | Dependencies & CI | T1.1 → T1.4 | complete |
-| 3 | Tests | T2.1 → T2.5 | not started |
-| 4 | Backend core | T3.1 → T3.3 | not started |
-| 5 | Speech I/O | T4.1 → T4.2 | not started |
-| 6 | Gradio UI | T5.1 → T5.6 | not started |
+| 3 | Tests | T2.1 → T2.5 | complete |
+| 4 | Backend core | T3.1 → T3.3 | complete |
+| 5 | Speech I/O | T4.1 → T4.2 | complete |
+| 6 | Gradio UI | T5.1 → T5.6 | complete |
 | 7 | Final quality gate | T6.1 | not started |
 
 ---

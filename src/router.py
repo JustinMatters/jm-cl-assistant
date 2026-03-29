@@ -20,11 +20,14 @@ _SYSTEM_PROMPT = (
 
 
 class OllamaRouter:
+    def __init__(self, model: str = OLLAMA_MODEL) -> None:
+        self._model = model
+
     def classify(
         self, query: str
     ) -> Literal["simple", "complex_sonnet", "complex_opus"]:
         response = ollama.chat(
-            model=OLLAMA_MODEL,
+            model=self._model,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": query or "(empty query)"},
