@@ -5,13 +5,13 @@ OllamaRouter = router_module.OllamaRouter
 
 TRIVIAL_QUERIES = [
     "hi",
-    "what is 2+2",
     "what colour is the sky",
+    "What is the capital of France?",
 ]
 
 SIMPLE_QUERIES = [
-    "What is the capital of France?",
-    "What time is it?",
+    "What is 2+2?",
+    "What is 15% of 200?",
     "How do you say hello in Spanish?",
 ]
 

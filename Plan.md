@@ -536,6 +536,102 @@ switching the router to use `qwen3:1.7b` for classification too.
 
 ---
 
+## Phase 11 — Tools
+
+The router currently routes arithmetic and maths calculations to `simple_ollama`
+(the 8B model) because LLMs can produce incorrect results for numerical
+computation. Phase 11 replaces that with a dedicated tool so maths is solved
+reliably and cheaply without involving a large model.
+
+### T11.1 — Calculator Tool
+**Status:** not started
+
+- Implement a `calculate(expression: str) -> str` tool in `src/tools/calculator.py`
+  that evaluates arithmetic expressions safely (no `eval` on arbitrary code)
+- Use the `simple_eval` or `asteval` library, or implement a safe AST-based
+  evaluator, to support basic arithmetic: `+`, `-`, `*`, `/`, `**`, `%`,
+  parentheses, and common maths functions (`sqrt`, `abs`, `round`, etc.)
+- Return the result as a formatted string, or a clear error message if the
+  expression is invalid
+- Add unit tests in `tests/test_calculator.py`
+
+### T11.2 — Integrate Calculator into Orchestrator
+**Status:** not started
+
+- Add a `maths` classification tier to the router system prompt so arithmetic
+  and calculation queries are routed to `maths` instead of `simple_ollama`
+- In `Orchestrator.respond()`, intercept the `maths` classification and call
+  the calculator tool instead of an LLM
+- Update `_backend_labels` to include a `"maths"` entry (e.g. `"Tool: calculator"`)
+- Update tests in `test_orchestrator.py` and `test_router.py`
+
+### T11.3 — Unit Conversion Tool (stretch)
+**Status:** not started
+
+- Implement a `convert(value, from_unit, to_unit) -> str` tool in
+  `src/tools/converter.py` using the `pint` library
+- Cover common categories: length, mass, temperature, volume, speed, time
+- Integrate into orchestrator similarly to the calculator
+- Add unit tests in `tests/test_converter.py`
+
+### T11.4 — Web Search Tool
+**Status:** not started
+
+- Implement a `web_search(query: str) -> str` tool in `src/tools/web_search.py`
+- Use the DuckDuckGo Instant Answer API (no API key required) or the
+  `duckduckgo-search` library as the backend
+- Return a concise summary of the top results (title + snippet + URL)
+  formatted as plain text suitable for passing back to an LLM or reading aloud
+- Add a `web_search` classification tier to the router system prompt for
+  queries that require current information (news, recent events, live data)
+- Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: web search"`
+- Add unit tests in `tests/test_web_search.py` (mock HTTP calls)
+
+### T11.5 — Location Tool (IP Lookup)
+**Status:** not started
+
+- Implement a `get_location() -> dict` tool in `src/tools/location.py`
+  that resolves the user's approximate location from their public IP address
+- Use a free IP geolocation API (e.g. `ip-api.com` — no key required) returning
+  city, region, country, latitude, and longitude
+- Cache the result for the session to avoid repeated lookups
+- Expose a `get_location_str() -> str` helper that returns a human-readable
+  location string (e.g. `"London, England, GB"`) for use by other tools
+- Add unit tests in `tests/test_location.py` (mock HTTP calls)
+
+### T11.6 — Date and Time Tool
+**Status:** not started
+
+- Implement a `get_datetime(timezone: str | None = None) -> str` tool in
+  `src/tools/datetime_tool.py`
+- Return the current date and time formatted as a readable string
+  (e.g. `"Sunday 29 March 2026, 14:35 BST"`)
+- If no timezone is supplied, attempt to infer it from the location tool
+  (T11.5); fall back to UTC with a note
+- Use the `zoneinfo` stdlib module (Python 3.9+) — no extra dependency needed
+- Add a `datetime` classification tier to the router system prompt for
+  queries about the current time or date
+- Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: datetime"`
+- Add unit tests in `tests/test_datetime_tool.py`
+
+### T11.7 — Weather Forecast Tool
+**Status:** not started
+
+- Implement a `get_weather(location: str, days: int = 7) -> str` tool in
+  `src/tools/weather.py`
+- Use the Open-Meteo API (free, no API key required) with geocoding via the
+  Open-Meteo geocoding endpoint to resolve location names to coordinates
+- Return a day-by-day forecast summary for up to 7 days: date, condition,
+  high/low temperature (°C), precipitation probability
+- If `location` is `"auto"`, call the location tool (T11.5) to resolve the
+  user's current location automatically
+- Format output as plain text suitable for reading aloud via TTS
+- Add a `weather` classification tier to the router system prompt
+- Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: weather"`
+- Add unit tests in `tests/test_weather.py` (mock HTTP calls)
+
+---
+
 ## Implementation Order Summary
 
 | Order | Phase | Tickets | Status |
@@ -551,6 +647,7 @@ switching the router to use `qwen3:1.7b` for classification too.
 | 8 | Text to Speech Debugging | T8.1 → T8.8 | complete |
 | 9 | Routing Tiers | T9.1 → T9.4 | complete |
 | 10 | Speech to Text Debugging | T10.1 | not started |
+| 11 | Tools | T11.1 → T11.7 | not started |
 
 ---
 
