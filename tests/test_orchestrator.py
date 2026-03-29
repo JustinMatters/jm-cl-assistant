@@ -12,14 +12,28 @@ class TestOrchestratorRespond:
         )
         return Orchestrator()
 
-    def test_simple_query_answered_by_ollama(self, mocker):
-        orch = self._make_orchestrator(mocker, "simple")
+    def test_trivial_query_answered_by_fast_ollama(self, mocker):
+        orch = self._make_orchestrator(mocker, "trivial_ollama")
+        mock_ollama = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="Hello!",
+        )
+        response, _ = orch.respond("hi", [])
+        mock_ollama.assert_called_once()
+        _, _, model_arg = mock_ollama.call_args.args
+        assert model_arg == orch._fast_model
+        assert response == "Hello!"
+
+    def test_simple_query_answered_by_slow_ollama(self, mocker):
+        orch = self._make_orchestrator(mocker, "simple_ollama")
         mock_ollama = mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="Paris",
         )
         response, _ = orch.respond("What is the capital of France?", [])
         mock_ollama.assert_called_once()
+        _, _, model_arg = mock_ollama.call_args.args
+        assert model_arg == orch._router._model
         assert response == "Paris"
 
     def test_complex_sonnet_query_answered_by_claude_sonnet(self, mocker):
@@ -43,7 +57,7 @@ class TestOrchestratorRespond:
         assert response == "A highly detailed answer."
 
     def test_history_is_returned_updated(self, mocker):
-        orch = self._make_orchestrator(mocker, "simple")
+        orch = self._make_orchestrator(mocker, "trivial_ollama")
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="Paris",
@@ -52,7 +66,7 @@ class TestOrchestratorRespond:
         assert len(history) > 0
 
     def test_existing_history_is_preserved(self, mocker):
-        orch = self._make_orchestrator(mocker, "simple")
+        orch = self._make_orchestrator(mocker, "simple_ollama")
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="Berlin",
@@ -65,7 +79,7 @@ class TestOrchestratorRespond:
         assert len(history) > len(prior_history)
 
     def test_respond_returns_tuple_of_str_and_list(self, mocker):
-        orch = self._make_orchestrator(mocker, "simple")
+        orch = self._make_orchestrator(mocker, "trivial_ollama")
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="answer",
@@ -99,8 +113,18 @@ class TestOrchestratorRespond:
         orch.respond("A very hard question.", [])
         mock_ollama.assert_not_called()
 
+    def test_claude_not_called_for_trivial_query(self, mocker):
+        orch = self._make_orchestrator(mocker, "trivial_ollama")
+        mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="answer",
+        )
+        mock_claude = mocker.patch("src.orchestrator.OpenRouterClient.ask")
+        orch.respond("hi", [])
+        mock_claude.assert_not_called()
+
     def test_claude_not_called_for_simple_query(self, mocker):
-        orch = self._make_orchestrator(mocker, "simple")
+        orch = self._make_orchestrator(mocker, "simple_ollama")
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="answer",

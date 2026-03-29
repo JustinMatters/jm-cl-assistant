@@ -1,6 +1,19 @@
 # jm-cl-assistant
 
-A hybrid AI chatbot interface that routes queries intelligently between a local Ollama model and Claude (Sonnet/Opus) via OpenRouter's OpenAI-compatible API.
+A hybrid AI chatbot interface that routes queries intelligently between local
+Ollama models and Claude (Sonnet/Opus) via OpenRouter's OpenAI-compatible API.
+
+## About This Project
+
+This project is an experiment in using [Claude Code](https://claude.ai/code)
+as the primary development tool. The entire codebase — architecture,
+implementation, tests, and documentation — has been built through an
+interactive session with Claude Code, with the human developer providing
+direction and requirements while Claude Code writes and reviews the code.
+
+The goal is to explore how far an AI coding assistant can take a non-trivial
+project: routing logic, speech I/O, a Gradio UI, CI, and a full test suite,
+all developed conversationally.
 
 ## Architecture
 
@@ -9,11 +22,13 @@ User Input (text | Whisper speech)
         ↓
    Gradio UI
         ↓
-   Ollama Router (local model)
-   ├── simple query → Ollama answer
-   └── complex query → Claude Sonnet / Claude Opus
+   Ollama Router (local model classifies query)
+   ├── trivial_ollama → qwen3:1.7b (fast local model)
+   ├── simple_ollama  → deepseek-r1-0528-qwen3:8b (local reasoning model)
+   ├── complex_sonnet → Claude Sonnet 4.6 via OpenRouter
+   └── complex_opus   → Claude Opus 4.6 via OpenRouter
         ↓
-   Output (text | Kokoro speech | dual)
+   Output (text | text and speech via Kokoro TTS)
 ```
 
 ## Features
@@ -21,13 +36,13 @@ User Input (text | Whisper speech)
 - **Typed or spoken input** — switch between keyboard and microphone (Whisper STT)
 - **Intelligent routing** — local Ollama model classifies query complexity and dispatches accordingly
 - **Claude API integration** — Sonnet for moderately complex queries, Opus for the hardest ones
-- **Flexible output** — text, speech (Kokoro TTS), or dual mode
+- **Flexible output** — text only, or text and speech (Kokoro TTS)
 
 ## Requirements
 
 - Python 3.13+
 - [UV](https://docs.astral.sh/uv/) for package management
-- [Ollama](https://ollama.com/) running locally with a local model pulled (see below)
+- [Ollama](https://ollama.com/) running locally with local models pulled (see below)
 - `OPENROUTER_API_KEY` environment variable set
 
 ## Required Model File Downloads
@@ -65,27 +80,29 @@ ollama list
 
 ### 2. Pull the Local Models
 
-This app uses two local models — one for general queries and routing, one
-for coding questions. Pull both before running the app:
+This app uses two local models. Pull both before running the app:
 
 ```bash
-# General use, reasoning, and query routing (default)
-ollama run sam860/deepseek-r1-0528-qwen3:8b
+# Trivial queries — fast, low-VRAM
+ollama run qwen3:1.7b
 
-# Coding questions
-ollama run mirage335/NVIDIA-Nemotron-Nano-9B-v2-virtuoso
+# Simple queries and query routing
+ollama run sam860/deepseek-r1-0528-qwen3:8b
 ```
 
-> **Note:** These models require approximately 5–6 GB of VRAM each. On a
-> 16 GB GPU with Whisper medium loaded (~5 GB), there is sufficient headroom
-> to run either model. Only one is loaded at a time by Ollama.
+> **Note:** Ollama loads one model at a time. The fast model (~2 GB VRAM)
+> and the 8B model (~5 GB VRAM) are loaded on demand as queries arrive.
+> On a 16 GB GPU with Whisper medium loaded (~5 GB), there is sufficient
+> headroom for either model.
 
-### 3. Recommended Models Reference
+### 3. Model Reference
 
-| Model | Best for | VRAM (approx) |
-|-------|----------|---------------|
-| DeepSeek R1 0528 Qwen3 8B | General use, reasoning, routing | ~5 GB |
-| NVIDIA Nemotron Nano 9B v2 | Coding questions | ~6 GB |
+| Model | Routing tier | VRAM (approx) |
+|-------|-------------|---------------|
+| `qwen3:1.7b` | `trivial_ollama` — greetings, arithmetic, one-word answers | ~2 GB |
+| `sam860/deepseek-r1-0528-qwen3:8b` | `simple_ollama` — factual lookups, routing classifier | ~5 GB |
+| Claude Sonnet 4.6 (OpenRouter) | `complex_sonnet` — analysis, essays, reasoning | cloud |
+| Claude Opus 4.6 (OpenRouter) | `complex_opus` — research, expert proofs | cloud |
 
 Speech recognition uses **Whisper medium** by default (~5 GB VRAM on CUDA).
 The Whisper model and Ollama model can be overridden at runtime:
@@ -110,8 +127,8 @@ uv run python assistant.py --whisper-model tiny --ollama-model llama3.2
 uv sync
 
 # 2. Pull Ollama models (see Ollama Setup above)
+ollama run qwen3:1.7b
 ollama run sam860/deepseek-r1-0528-qwen3:8b
-ollama run mirage335/NVIDIA-Nemotron-Nano-9B-v2-virtuoso
 
 # 3. Download Kokoro model files (see Required Model File Downloads above)
 #    Place kokoro-v1.0.onnx and voices-v1.0.bin in the project root

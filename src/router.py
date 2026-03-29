@@ -1,7 +1,8 @@
 """Query complexity classifier backed by a local Ollama model.
 
-Routes each user query to one of three tiers — simple, complex_sonnet, or
-complex_opus — by prompting a local LLM to classify the query's difficulty.
+Routes each user query to one of four tiers — trivial_ollama,
+simple_ollama, complex_sonnet, or complex_opus — by prompting a local
+LLM to classify the query's difficulty.
 """
 
 from typing import Literal
@@ -9,18 +10,25 @@ from typing import Literal
 import ollama
 
 OLLAMA_MODEL = "sam860/deepseek-r1-0528-qwen3:8b"
+OLLAMA_FAST_MODEL = "qwen3:1.7b"
 
-_VALID = frozenset({"simple", "complex_sonnet", "complex_opus"})
-_FALLBACK: Literal["simple", "complex_sonnet", "complex_opus"] = "simple"
+_VALID = frozenset(
+    {"trivial_ollama", "simple_ollama", "complex_sonnet", "complex_opus"}
+)
+_FALLBACK: Literal[
+    "trivial_ollama", "simple_ollama", "complex_sonnet", "complex_opus"
+] = "trivial_ollama"
 
 _SYSTEM_PROMPT = (
     "You are a query complexity classifier. "
-    "Given a user query, respond with EXACTLY ONE of these words:\n\n"
-    "  simple         — factual lookups, basic questions, greetings\n"
+    "Given a user query, respond with EXACTLY ONE of these tokens:\n\n"
+    "  trivial_ollama — greetings, simple arithmetic, single-word factual "
+    "answers (e.g. 'hi', 'what is 2+2', 'what colour is the sky')\n"
+    "  simple_ollama  — factual lookups, basic questions, short explanations\n"
     "  complex_sonnet — analysis, essays, multi-step reasoning\n"
     "  complex_opus   — cutting-edge research, expert proofs, "
     "highly complex multi-domain problems\n\n"
-    "Output only the single classification word. No punctuation, "
+    "Output only the single classification token. No punctuation, "
     "no explanation."
 )
 
@@ -41,20 +49,22 @@ class OllamaRouter:
 
     def classify(
         self, query: str
-    ) -> Literal["simple", "complex_sonnet", "complex_opus"]:
+    ) -> Literal[
+        "trivial_ollama", "simple_ollama", "complex_sonnet", "complex_opus"
+    ]:
         """Classify a user query by complexity.
 
         Prompts the local Ollama model with the query and parses the
-        single-word classification response.  Falls back to ``"simple"``
-        if the model returns an unrecognised value.
+        single-token classification response.  Falls back to
+        ``"trivial_ollama"`` if the model returns an unrecognised value.
 
         Args:
             query: The user's input text.  An empty string is sent as
               ``"(empty query)"`` to avoid API errors.
 
         Returns:
-            One of ``"simple"``, ``"complex_sonnet"``, or
-            ``"complex_opus"``.
+            One of ``"trivial_ollama"``, ``"simple_ollama"``,
+            ``"complex_sonnet"``, or ``"complex_opus"``.
         """
         response = ollama.chat(
             model=self._model,

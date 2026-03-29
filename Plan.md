@@ -434,7 +434,7 @@ options covering the most common accent/gender combinations:
 ## Phase 9 — Routing Tiers
 
 ### T9.1 — Identify Fast Small Local Model
-**Status:** not started
+**Status:** complete
 
 Research and select a very fast, lightweight Ollama model suitable for
 handling trivial queries (e.g. simple greetings, single-fact lookups,
@@ -444,45 +444,65 @@ arithmetic). Criteria:
 - Fast time-to-first-token (noticeably quicker than the 8B reasoning model)
 - Sufficient quality for trivial responses
 
-Document the chosen model name and pull command in the README.
+**Selected: `qwen3:1.7b`**
+- ~1.5–2 GB VRAM (Q4_K_M), ~1.1 GB on disk
+- Same Qwen model family as `sam860/deepseek-r1-0528-qwen3:8b` — consistent
+  tokenizer behaviour and well-documented instruction-following precision,
+  important for the one-word routing response
+- Estimated 4–6× faster than the 8B model for short-context inference
+- `ollama run qwen3:1.7b`
+
+**Rejected alternatives:**
+
+| Model | Params | Est. VRAM | Reason rejected |
+|-------|--------|-----------|-----------------|
+| `gemma3:1b` | 1B | ~1–1.5 GB | Slightly higher risk of malformed classification output |
+| `llama3.2:1b` | 1B | ~1.5–2 GB | Outclassed by Qwen3 at similar VRAM; keep as fallback if GPU/driver issues |
+| `qwen3:0.6b` | 0.6B | ~0.8 GB | Noticeable instruction-following quality dip vs 1.7B |
 
 ### T9.2 — Add Trivial Routing Tier (Small Fast Model)
-**Status:** not started
+**Status:** complete
 
-Introduce a new routing classification `"trivial"` handled by the small fast
-model identified in T9.1. All queries are routed to this model first; only
-queries classified as needing more capability are escalated.
+Introduce a new routing classification `"trivial_ollama"` handled by the
+small fast model identified in T9.1. Tier names use underscore suffixes
+(`_ollama`, `_sonnet`, `_opus`) so the classifier cannot accidentally
+return a plain English word that matches a valid tier.
 
 Current routing:
 ```
-simple        → sam860/deepseek-r1-0528-qwen3:8b
+simple         → sam860/deepseek-r1-0528-qwen3:8b
 complex_sonnet → Claude Sonnet
 complex_opus   → Claude Opus
 ```
 
 New routing:
 ```
-trivial        → <small fast model from T9.1>
-simple         → sam860/deepseek-r1-0528-qwen3:8b
+trivial_ollama → qwen3:1.7b
+simple_ollama  → sam860/deepseek-r1-0528-qwen3:8b
 complex_sonnet → Claude Sonnet
 complex_opus   → Claude Opus
 ```
 
-- Add `OLLAMA_FAST_MODEL` constant to `src/router.py` (hardcoded until a
-  future argparse ticket)
-- Update `OllamaRouter.classify()` to return the new `"trivial"` tier
-- Update `Orchestrator` to dispatch `"trivial"` to the fast model
-- Update router and orchestrator unit tests to cover the new tier
-- Update the `last_backend` label shown in the chat
+- Add `OLLAMA_FAST_MODEL = "qwen3:1.7b"` constant to `src/router.py`
+- Rename `"simple"` → `"simple_ollama"` and add `"trivial_ollama"` to
+  `_VALID`, `_FALLBACK`, type hints, and `_SYSTEM_PROMPT`
+- Add `fast_model` constructor arg to `Orchestrator`; add `model` parameter
+  to `_ollama_respond()`; dispatch `"trivial_ollama"` to fast model and
+  `"simple_ollama"` to the deepseek model
+- Updated all router and orchestrator unit tests
 
 ### T9.3 — Update Tests and README for New Routing Tiers
-**Status:** not started
+**Status:** complete
 
 - Extend router unit tests to assert correct classification for trivially
-  simple queries (e.g. "hi", "what is 2+2")
+  simple queries (e.g. "hi", "what is 2+2") — done as part of T9.2
 - Extend orchestrator unit tests to confirm the fast model is called for
-  `"trivial"` and the deepseek model for `"simple"`
-- Update README routing diagram and model reference table
+  `"trivial_ollama"` and the deepseek model for `"simple_ollama"` — done
+  as part of T9.2
+- Update README routing diagram and model reference table to reflect the
+  four-tier routing system
+- Add a project introduction section to the README explaining that this
+  project is an experiment in using Claude Code as a development tool
 
 ---
 
