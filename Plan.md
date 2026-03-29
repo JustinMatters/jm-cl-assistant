@@ -294,7 +294,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
   is already stored in API history
 
 ### T7.6 — Lint and Test
-**Status:** not started
+**Status:** complete
 
 - `uv run ruff check . --fix`
 - `uv run ruff format .`
