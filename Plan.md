@@ -272,7 +272,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Use Gradio's `height` parameter or custom CSS as needed
 
 ### T7.3 — Rename Chat Panel to "Previous Conversation"
-**Status:** not started
+**Status:** complete
 
 - Change the `gr.Chatbot` label from `"Chat"` to `"Previous Conversation"`
 

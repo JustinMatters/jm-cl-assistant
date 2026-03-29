@@ -52,7 +52,7 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
             "20 lines": 620,
         }
 
-        chatbot = gr.Chatbot(label="Chat", height=120)
+        chatbot = gr.Chatbot(label="Previous Conversation", height=120)
         backend_label = gr.Markdown("")
 
         text_input = gr.Textbox(
