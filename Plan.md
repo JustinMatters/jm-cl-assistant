@@ -175,7 +175,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 ## Phase 4 — Speech I/O Modules
 
 ### T4.1 — Speech Input: Whisper (`src/speech_input.py`)
-**Status:** not started
+**Status:** complete
 
 - `WhisperTranscriber` class loading a Whisper model
 - Default model: `medium` (hardcoded constant until T5.6)
@@ -183,7 +183,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Accept raw numpy audio from Gradio's audio component
 
 ### T4.2 — Speech Output: Kokoro (`src/speech_output.py`)
-**Status:** not started
+**Status:** complete
 
 - `KokoroSpeaker` class wrapping the `kokoro-onnx` pipeline
 - `synthesize(text: str) -> tuple[np.ndarray, int]` — returns audio array + sample rate
