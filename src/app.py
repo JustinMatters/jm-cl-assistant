@@ -3,6 +3,7 @@ import argparse
 import gradio as gr
 import numpy as np
 
+from src.helpers import strip_think_tags
 from src.orchestrator import Orchestrator
 from src.speech_input import WhisperTranscriber
 from src.speech_output import KokoroSpeaker
@@ -43,6 +44,10 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
                 choices=["3 lines", "5 lines", "10 lines", "20 lines"],
                 value="3 lines",
                 label="Conversation Height",
+            )
+            show_think = gr.Checkbox(
+                value=True,
+                label="Show <think> tags",
             )
 
         _LINE_HEIGHTS = {
@@ -111,19 +116,24 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
 
         # ── Text input flow ─────────────────────────────────────────────────
 
-        def _prefix_last_reply(history: list, response: str) -> list:
+        def _prefix_last_reply(
+            history: list, response: str, show: bool
+        ) -> list:
+            content = response if show else strip_think_tags(response)
             display = list(history)
             display[-1] = {
                 "role": "assistant",
-                "content": f"**{orchestrator.last_backend}:** {response}",
+                "content": f"**{orchestrator.last_backend}:** {content}",
             }
             return display
 
-        def handle_text(query, history, out_mode):
+        def handle_text(query, history, out_mode, show):
             if not query.strip():
                 return history, history, "", None
             response, updated_history = orchestrator.respond(query, history)
-            display_history = _prefix_last_reply(updated_history, response)
+            display_history = _prefix_last_reply(
+                updated_history, response, show
+            )
             audio_out = None
             if out_mode in ("speech", "dual"):
                 arr, sr = speaker.synthesize(response)
@@ -132,25 +142,27 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
 
         submit_btn.click(
             handle_text,
-            inputs=[text_input, history_state, output_mode],
+            inputs=[text_input, history_state, output_mode, show_think],
             outputs=[chatbot, history_state, text_input, audio_output],
         )
         text_input.submit(
             handle_text,
-            inputs=[text_input, history_state, output_mode],
+            inputs=[text_input, history_state, output_mode, show_think],
             outputs=[chatbot, history_state, text_input, audio_output],
         )
 
         # ── Speech input flow ───────────────────────────────────────────────
 
-        def handle_audio(audio_data, history, out_mode):
+        def handle_audio(audio_data, history, out_mode, show):
             if audio_data is None:
                 return history, history, None
             sample_rate, audio_array = audio_data
             float_audio = audio_array.astype(np.float32) / 32768.0
             query = transcriber.transcribe(float_audio, sample_rate)
             response, updated_history = orchestrator.respond(query, history)
-            display_history = _prefix_last_reply(updated_history, response)
+            display_history = _prefix_last_reply(
+                updated_history, response, show
+            )
             audio_out = None
             if out_mode in ("speech", "dual"):
                 arr, sr = speaker.synthesize(response)
@@ -159,7 +171,7 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
 
         audio_input.change(
             handle_audio,
-            inputs=[audio_input, history_state, output_mode],
+            inputs=[audio_input, history_state, output_mode, show_think],
             outputs=[chatbot, history_state, audio_output],
         )
 

@@ -283,27 +283,37 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
   displaying it in the chatbot (e.g. `**Ollama:** ...`, `**Claude Sonnet:** ...`)
 - Source the label from `orchestrator.last_backend`
 
-### T7.5 — Lint and Test
+### T7.5 — Toggle to Show/Hide `<think>` Tag Content
+**Status:** complete
+
+- Add a checkbox toggle next to the Conversation Height dropdown
+- When enabled (default: hidden), strip any text between `<think>` and `</think>`
+  tags from the LLM response before displaying it in the chatbot
+- When disabled, show the full response including chain-of-thought content
+- Apply stripping to the display history only; the clean response (without tags)
+  is already stored in API history
+
+### T7.6 — Lint and Test
 **Status:** not started
 
 - `uv run ruff check . --fix`
 - `uv run ruff format .`
 - `uv run pytest -m "not integration"`
 
-### T7.6 — Add Google-Style Docstrings
+### T7.7 — Add Google-Style Docstrings
 **Status:** not started
 
 - Add docstrings to all public classes and functions across `src/` following the
   [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
-- Cover: `OllamaRouter`, `ClaudeClient`, `Orchestrator`, `WhisperTranscriber`,
+- Cover: `OllamaRouter`, `OpenRouterClient`, `Orchestrator`, `WhisperTranscriber`,
   `KokoroSpeaker`, `build_app`, `main`
 
-### T7.7 — Lint and Test Again
+### T7.8 — Lint and Test Again
 **Status:** not started
 
-- Repeat T7.5 after docstrings are added to confirm nothing was broken
+- Repeat T7.6 after docstrings are added to confirm nothing was broken
 
-### T7.8 — Update README
+### T7.9 — Update README
 **Status:** not started
 
 - Add running instructions: `uv run python assistant.py` with argparse options
@@ -326,7 +336,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 | 5 | Speech I/O | T4.1 → T4.2 | complete |
 | 6 | Gradio UI | T5.1 → T5.6 | complete |
 | 7 | Quality gate | T6.1 | complete |
-| 8 | Refinements | T7.1 → T7.8 | not started |
+| 8 | Refinements | T7.1 → T7.9 | not started |
 
 ---
 
