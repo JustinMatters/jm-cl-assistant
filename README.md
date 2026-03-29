@@ -88,8 +88,20 @@ ollama run mirage335/NVIDIA-Nemotron-Nano-9B-v2-virtuoso
 | NVIDIA Nemotron Nano 9B v2 | Coding questions | ~6 GB |
 
 Speech recognition uses **Whisper medium** by default (~5 GB VRAM on CUDA).
-The Whisper model and Ollama model can be overridden at runtime via CLI
-arguments (see `uv run python src/app.py --help`).
+The Whisper model and Ollama model can be overridden at runtime:
+
+```bash
+uv run python assistant.py --whisper-model tiny --ollama-model llama3.2
+```
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--whisper-model` | `medium` | Whisper model size (`tiny`, `base`, `small`, `medium`, `large`) |
+| `--ollama-model` | `sam860/deepseek-r1-0528-qwen3:8b` | Ollama model name for routing and simple queries |
+
+> **First run note:** If the Whisper model has not been used before, it will
+> be downloaded automatically (~1.5 GB for `medium`) on first launch and
+> cached in `~/.cache/whisper/`. Subsequent starts are instant.
 
 ## Setup
 
@@ -107,8 +119,11 @@ ollama run mirage335/NVIDIA-Nemotron-Nano-9B-v2-virtuoso
 # 4. Set your OpenRouter API key
 export OPENROUTER_API_KEY=your_key_here
 
-# 5. Run the app
-uv run python src/app.py
+# 5. Run the app (defaults)
+uv run python assistant.py
+
+# 5a. Or override models at launch
+uv run python assistant.py --whisper-model tiny --ollama-model llama3.2
 ```
 
 ## Development

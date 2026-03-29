@@ -319,7 +319,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
   asserts `OPENROUTER_API_KEY` is present and non-empty in the environment
 
 ### T7.9 — Update README
-**Status:** not started
+**Status:** complete
 
 - Add running instructions: `uv run python assistant.py` with argparse options
 - Add a note about the Whisper model download delay on first run (~1.5 GB for
@@ -334,14 +334,14 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 
 | Order | Phase | Tickets | Status |
 |-------|-------|---------|--------|
-| 1 | Bootstrap | T0.1 → T0.5 | complete |
-| 2 | Dependencies & CI | T1.1 → T1.4 | complete |
-| 3 | Tests | T2.1 → T2.5 | complete |
-| 4 | Backend core | T3.1 → T3.3 | complete |
-| 5 | Speech I/O | T4.1 → T4.2 | complete |
-| 6 | Gradio UI | T5.1 → T5.6 | complete |
-| 7 | Quality gate | T6.1 | complete |
-| 8 | Refinements | T7.1 → T7.9 | not started |
+| 0 | Bootstrap | T0.1 → T0.5 | complete |
+| 1 | Dependencies & CI | T1.1 → T1.4 | complete |
+| 2 | Tests | T2.1 → T2.5 | complete |
+| 3 | Backend core | T3.1 → T3.3 | complete |
+| 4 | Speech I/O | T4.1 → T4.2 | complete |
+| 5 | Gradio UI | T5.1 → T5.6 | complete |
+| 6 | Quality gate | T6.1 | complete |
+| 7 | Refinements | T7.1 → T7.9 | complete |
 
 ---
 
