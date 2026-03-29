@@ -264,7 +264,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
 - Persist selection within the session via `gr.State`
 
 ### T7.2 — Scale Chat Panel to Fit Viewport
-**Status:** not started
+**Status:** complete
 
 - Adjust the `gr.Chatbot` height so the full app (chat + input + send button) is
   visible without scrolling

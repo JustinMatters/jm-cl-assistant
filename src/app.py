@@ -39,8 +39,20 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
                 value="text",
                 label="Output Mode",
             )
+            height_selector = gr.Dropdown(
+                choices=["3 lines", "5 lines", "10 lines", "20 lines"],
+                value="3 lines",
+                label="Conversation Height",
+            )
 
-        chatbot = gr.Chatbot(label="Chat")
+        _LINE_HEIGHTS = {
+            "3 lines": 120,
+            "5 lines": 200,
+            "10 lines": 320,
+            "20 lines": 620,
+        }
+
+        chatbot = gr.Chatbot(label="Chat", height=120)
         backend_label = gr.Markdown("")
 
         text_input = gr.Textbox(
@@ -83,10 +95,19 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
             inputs=input_mode,
             outputs=[text_input, submit_btn, audio_input],
         )
+
+        def set_chatbot_height(choice):
+            return gr.update(height=_LINE_HEIGHTS[choice])
+
         output_mode.change(
             toggle_output_mode,
             inputs=output_mode,
             outputs=audio_output,
+        )
+        height_selector.change(
+            set_chatbot_height,
+            inputs=height_selector,
+            outputs=chatbot,
         )
 
         # ── Text input flow ─────────────────────────────────────────────────
