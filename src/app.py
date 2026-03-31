@@ -8,7 +8,6 @@ to show or hide LLM chain-of-thought ``<think>`` tags.
 import argparse
 
 import gradio as gr
-import numpy as np
 
 from src.helpers import (
     strip_markdown,
@@ -17,6 +16,7 @@ from src.helpers import (
     to_wav_bytes,
 )
 from src.orchestrator import Orchestrator
+from src.process_audio import process_audio
 from src.speech_input import WhisperTranscriber
 from src.speech_output import KokoroSpeaker
 
@@ -205,25 +205,24 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
         )
 
         # ── Speech input flow ───────────────────────────────────────────────
+        # Transcribe the recording and dispatch to the orchestrator immediately.
+        # The transcribed query appears in the chat as the user message.
+        # Note: audio_input is NOT reset here — returning value=None to a
+        # gr.Audio component re-fires its change event, which would clear
+        # audio_output before TTS can play.  The user clicks record again
+        # naturally from the waveform state to make a new recording.
 
         def handle_audio(audio_data, history, out_mode, show, voice):
-            if audio_data is None:
-                return history, history, None
-            sample_rate, audio_array = audio_data
-            float_audio = audio_array.astype(np.float32) / 32768.0
-            query = transcriber.transcribe(float_audio, sample_rate)
-            response, updated_history = orchestrator.respond(query, history)
-            display_history = _prefix_last_reply(
-                updated_history, response, show
+            return process_audio(
+                audio_data,
+                history,
+                out_mode,
+                show,
+                voice,
+                transcriber,
+                orchestrator,
+                speaker,
             )
-            audio_out = None
-            if out_mode == "text and speech":
-                speech_text = response if show else strip_think_tags(response)
-                arr, sr = speaker.synthesize(
-                    strip_markdown(speech_text), voice=voice
-                )
-                audio_out = to_wav_bytes(arr, sr)
-            return display_history, updated_history, audio_out
 
         audio_input.change(
             handle_audio,

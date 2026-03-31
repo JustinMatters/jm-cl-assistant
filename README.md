@@ -120,6 +120,24 @@ uv run python assistant.py --whisper-model tiny --ollama-model llama3.2
 > be downloaded automatically (~1.5 GB for `medium`) on first launch and
 > cached in `~/.cache/whisper/`. Subsequent starts are instant.
 
+## Using Speech Input
+
+Switch the **Input Mode** radio button to `speech` to reveal the microphone
+recorder.
+
+**Browser microphone permission is not requested until you press the record
+button.** Before you press it, the UI may show a "No microphone found"
+warning — this is Gradio's placeholder state and does not mean your microphone
+is absent or blocked. Press the record button and the browser will prompt you
+to grant microphone access; the warning clears once permission is given.
+
+This behaviour has been observed on both Chrome and Firefox on Windows 11 and
+is a property of how Gradio requests the microphone, not a browser-specific
+issue.
+
+If you dismiss the permission prompt or previously blocked the site, grant
+access via your browser's site settings for `localhost` and reload the page.
+
 ## Setup
 
 ```bash

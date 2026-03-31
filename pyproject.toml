@@ -10,7 +10,9 @@ dependencies = [
     "ollama>=0.6.1",
     "openai>=2.30.0",
     "openai-whisper>=20250625",
+    "scipy>=1.17.1",
     "sounddevice>=0.5.5",
+    "torch>=2.11.0",
 ]
 
 [tool.ruff]
@@ -19,6 +21,9 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/cu130"
 
 [tool.ruff.format]
 quote-style = "double"

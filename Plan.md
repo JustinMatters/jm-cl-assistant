@@ -309,7 +309,7 @@ uv add --dev ruff pytest pytest-mock pytest-asyncio
   `KokoroSpeaker`, `build_app`, `main`
 
 ### T7.8 — Lint and Test Again
-**Status:** not started
+**Status:** complete
 
 - Repeat T7.6 after docstrings are added to confirm nothing was broken
 - Extend integration tests to also run as part of the T7.8 gate
@@ -526,7 +526,7 @@ switching the router to use `qwen3:1.7b` for classification too.
 ## Phase 10 — Speech to Text Debugging
 
 ### T10.1 — Check STT via Whisper Works End-to-End
-**Status:** not started
+**Status:** in progress
 
 - Verify the browser can access the microphone via the `gr.Audio` component
 - Verify audio is captured and passed correctly to `WhisperTranscriber.transcribe()`
@@ -534,16 +534,411 @@ switching the router to use `qwen3:1.7b` for classification too.
 - Verify the transcribed text is displayed correctly as the user message in the chat
 - Identify and fix any bugs found at each stage
 
+**Finding:** Gradio shows a "No microphone found" warning as soon as speech
+input mode is selected — before the record button is pressed. This is
+Gradio's placeholder state; the browser only requests microphone permission
+when record is pressed. Confirmed on both Chrome and Firefox on Windows 11.
+Documented in README under "Using Speech Input".
+
+### T10.2 — Display Transcribed Text Before Response
+**Status:** complete
+
+- When speech mode is active, the user cannot see what Whisper thought they said
+  before the query is sent to the orchestrator — there is no confirmation step
+- Display the transcribed text in the chat history as the user message so the
+  user can see exactly what was heard
+- Consider adding a brief "You said: ..." indicator or showing the transcription
+  in the text input box before clearing it
+
+**Implementation:** Split `handle_audio` into two steps. Step 1: transcribe
+and populate `text_input` (made visible) plus `submit_btn` so the user can
+review and edit the transcription. Step 2: user presses Send — the existing
+`handle_text` handler sends to the orchestrator as normal (handling TTS if
+output mode is "text and speech"). After submit in speech mode, `text_input`
+and `submit_btn` are hidden again so the UI returns to the audio recorder
+ready for the next query. Re-recording replaces the text in the box.
+
+### T10.3 — Handle Unused `sample_rate` Parameter
+**Status:** complete
+
+- `WhisperTranscriber.transcribe()` accepts `sample_rate` but never uses it;
+  Whisper internally resamples all audio to 16 kHz
+- Either remove the parameter and update all callers, or resample the input
+  audio to 16 kHz explicitly before passing to Whisper (more robust if the
+  browser provides audio at a non-standard sample rate)
+- Decide which approach is correct and implement it; update tests accordingly
+
+**Implementation:** Added `scipy.signal.resample` to `speech_input.py` to
+explicitly resample audio to `_WHISPER_SR` (16 kHz) when the input sample
+rate differs. This was the root cause of poor transcription quality — browser
+microphones typically record at 44.1 kHz or 48 kHz, which Whisper was
+interpreting as 16 kHz (3× too fast). `scipy` added as a project dependency.
+
+### T10.4 — Audio Input Validation
+**Status:** complete
+
+- `handle_audio()` in `app.py` assumes `audio_data` is always a
+  `(sample_rate, audio_array)` tuple with int16 dtype — no validation
+- Add checks for: unexpected `None` values within the tuple, unexpected
+  array dtypes (e.g. float32 from some browsers), zero-length audio,
+  unreasonable sample rates
+- Return a user-friendly chat message if audio is invalid rather than
+  crashing the handler
+
+**Implementation:** Added validation in `handle_audio()`: guards for `None`
+components and zero-length arrays (silent return), invalid sample rate (error
+message in chat display only — `history_state` unchanged to keep conversation
+clean). Added dtype-aware normalisation: float32/float64 passed through as-is,
+int32 scaled by 2^31, int16 and others scaled by 32768.
+
+### T10.5 — Wrap STT in Error Handling
+**Status:** complete
+
+- If `whisper.load_model()` fails at startup (missing cache, OOM, network
+  error during download), the app crashes with no user guidance
+- If `transcribe()` fails at runtime (corrupted audio, internal Whisper
+  error), the Gradio handler crashes
+- Wrap model loading in try/except with a clear error message (e.g.
+  "Whisper model failed to load — check your internet connection and
+  available disk space")
+- Wrap the `transcribe()` call in `handle_audio()` in try/except and
+  return a chat error bubble rather than crashing
+- Consider deferring Whisper model loading to first use (lazy loading)
+  to match the KokoroSpeaker pattern and speed up app startup
+
+**Implementation:** Converted `WhisperTranscriber` to lazy-load the model
+on first `transcribe()` call (matching KokoroSpeaker's pattern), speeding
+up app startup. Model load exceptions propagate naturally from `transcribe()`.
+In `handle_audio()`, wrapped the `transcriber.transcribe()` call in
+try/except — any failure appends an error bubble to the chat display without
+crashing the handler or polluting `history_state`. Added two new tests:
+`test_model_loaded_lazily_on_first_call` and
+`test_model_not_reloaded_on_second_call`.
+
+### T10.6 — STT Confidence and Empty Transcription Handling
+**Status:** complete
+
+- Whisper can return empty or near-empty strings for silent, noisy, or
+  unintelligible audio — currently this is passed straight to the
+  orchestrator as a query
+- Detect empty or whitespace-only transcriptions and show a "Could not
+  understand audio — please try again" message instead of routing an
+  empty query
+- Investigate whether Whisper's `no_speech_prob` or segment-level
+  confidence scores can be used to warn the user about low-confidence
+  transcriptions
+
+**Implementation:** Added `_NO_SPEECH_THRESHOLD = 0.6` to `speech_input.py`.
+After transcription, the average `no_speech_prob` across all segments is
+checked; if it exceeds the threshold the transcription is discarded (returns
+empty string). In `handle_audio()`, the silent return on empty transcription
+was replaced with a user-facing message: "could not understand audio — please
+try again". Three new tests cover high confidence, low confidence, and no
+segments (result dict without a `"segments"` key).
+
+### T10.7 — Add Unit Tests for Audio Handler Logic
+**Status:** complete
+
+- `handle_audio()` in `app.py` contains real logic: int16-to-float32
+  conversion, transcription, orchestrator dispatch, optional TTS — none
+  of this is unit-tested
+- Extract the audio conversion and transcription logic into a testable
+  helper (or test `handle_audio` directly with mocked dependencies)
+- Add tests for: normal audio path, None audio input, empty
+  transcription, TTS-enabled vs TTS-disabled output, error cases
+
 ---
 
-## Phase 11 — Tools
+## Phase 11 — Error Handling
+
+The app currently has no protection around any external call site. If Ollama
+is stopped, OpenRouter is unreachable, or a model file is missing, the user
+sees a raw Python traceback instead of a helpful message. This phase adds
+resilience across every boundary.
+
+### T11.1 — Ollama Call Protection
+**Status:** not started
+
+- Wrap `ollama.chat()` calls in `orchestrator.py` (`_ollama_respond`) and
+  `router.py` (`classify`) in try/except
+- Catch `ollama.ResponseError`, `httpx.ConnectError`, and generic `Exception`
+- In the orchestrator, return a user-friendly string
+  (e.g. "Ollama is not responding — please check it is running")
+- In the router, fall back to `trivial_ollama` on connection failure (already
+  the fallback for unparseable output) and log a warning
+- Add unit tests that mock `ollama.chat` raising each exception type
+
+### T11.2 — OpenRouter Call Protection
+**Status:** not started
+
+- Wrap the `self._client.chat.completions.create()` call in
+  `openrouter_client.py` in try/except
+- Catch `openai.APIConnectionError`, `openai.RateLimitError` (429),
+  `openai.APIStatusError` (5xx), and `openai.AuthenticationError`
+- Return a descriptive error string for each case (e.g. "OpenRouter rate
+  limit hit — please wait and try again")
+- Add a `timeout` parameter to the `create()` call (e.g. 60 seconds)
+- Add unit tests for each exception path
+
+### T11.3 — Friendly Missing API Key Error
+**Status:** not started
+
+- `OpenRouterClient.__init__` raises a bare `KeyError` when
+  `OPENROUTER_API_KEY` is not set
+- Catch `KeyError` and raise `ValueError` with the message
+  "Set the OPENROUTER_API_KEY environment variable before running the app"
+- Update the existing test in `test_openrouter_client.py` to assert on the
+  new `ValueError` and message text
+
+### T11.4 — Kokoro Model File Check
+**Status:** not started
+
+- At startup in `build_app()`, check whether `kokoro-v1.0.onnx` and
+  `voices-v1.0.bin` exist in the project root
+- If missing, log a clear warning ("Kokoro model files not found — TTS will
+  be unavailable") and allow the app to launch in text-only mode
+- Wrap the `Kokoro()` constructor call in `speech_output.py` in try/except
+  so a missing or corrupted model file produces a clear error rather than
+  a crash on first TTS request
+
+### T11.5 — Gradio Handler Crash Protection
+**Status:** not started
+
+- Wrap the bodies of `handle_text()` and `handle_audio()` in `app.py` in
+  try/except blocks
+- On exception, append an error message to the chat history as an assistant
+  bubble (e.g. "Error: Ollama is not responding") instead of letting the
+  handler crash
+- Ensure the UI remains usable after an error — the user should be able to
+  retry or switch modes without reloading the page
+- Add unit tests (see also T10.7) that verify error bubbles appear when
+  downstream components raise exceptions
+
+### T11.6 — Startup Health Checks
+**Status:** not started
+
+- Add an optional startup check in `build_app()` that verifies:
+  - Ollama is reachable (`ollama.list()` succeeds)
+  - Required Ollama models are pulled (both `qwen3:1.7b` and the 8B model)
+  - `OPENROUTER_API_KEY` is set (warn, don't block — local-only use is valid)
+  - Kokoro model files are present (see T11.4)
+- Log the result of each check at startup; do not block launch on failures
+  but warn clearly which features will be unavailable
+
+---
+
+## Phase 12 — Unused `sample_rate` Parameter
+
+### T12.1 — Resolve `sample_rate` in WhisperTranscriber
+**Status:** not started
+
+- `WhisperTranscriber.transcribe()` accepts `sample_rate` as a parameter
+  but never passes it to Whisper — the model internally resamples to 16 kHz
+- **Option A (remove):** Delete the parameter and update `handle_audio()` in
+  `app.py` to stop passing it; simpler but less future-proof
+- **Option B (resample):** Use `scipy.signal.resample` or `librosa.resample`
+  to explicitly resample the input to 16 kHz before passing to Whisper;
+  more robust if the browser provides audio at a non-standard rate
+- Pick one approach, implement it, and update tests
+- Cross-reference: overlaps with T10.3 — close whichever is addressed first
+  and mark the other as superseded
+
+---
+
+## Phase 13 — Documentation Refresh
+
+### T13.1 — Update CLAUDE.md Runtime Configuration Section
+**Status:** not started
+
+- Lines 32-36 say "currently hardcoded defaults pending argparse
+  implementation" and reference T5.6 — argparse is already implemented in
+  `app.py` with `--whisper-model` and `--ollama-model` flags
+- Rewrite the section to reflect current reality; remove the "pending"
+  language
+
+### T13.2 — Update CLAUDE.md Architecture Description
+**Status:** not started
+
+- Line 8 describes the router as classifying "simple / complex_sonnet /
+  complex_opus" — the router now has four tiers including `trivial_ollama`
+- Update to list all four tiers
+
+### T13.3 — Update README Model Reference Table
+**Status:** not started
+
+- Line 102 lists `trivial_ollama` as handling "greetings, arithmetic,
+  one-word answers" — arithmetic was moved to `simple_ollama` and
+  `trivial_ollama` now handles "facts a schoolchild would know"
+- Update the table to match the current routing prompt
+
+### T13.4 — Fix Historical Filenames in Plan.md
+**Status:** not started
+
+- T2.3 (line 121) references `tests/test_claude_client.py` and T3.2
+  (line 155) references `src/claude_client.py` — both were renamed to
+  `*openrouter_client*` during implementation
+- Add a note to each completed ticket indicating the rename, or update
+  the descriptions to use the current filenames
+
+---
+
+## Phase 14 — Testing Gaps
+
+### T14.1 — Unit Tests for `app.py` Event Handlers
+**Status:** not started
+
+- `app.py` has zero unit tests — the event handlers contain real logic:
+  int16-to-float32 conversion, history management, TTS gating, think-tag
+  stripping
+- Extract testable logic from `handle_text()` and `handle_audio()` into
+  helper functions, or test the handlers directly with mocked dependencies
+- Cross-reference: overlaps with T10.7 — coordinate to avoid duplication
+
+### T14.2 — Error-Path Tests Across All Modules
+**Status:** not started
+
+- No test file exercises failure scenarios: Ollama down, OpenRouter 429,
+  missing model files, corrupted audio input, empty API responses
+- Add parametrised tests that mock exceptions from `ollama.chat()`,
+  `openai.OpenAI.chat.completions.create()`, and `whisper.load_model()`
+- Verify that the error handling added in Phase 11 returns user-friendly
+  messages rather than raising unhandled exceptions
+
+### T14.3 — Integration Test API Key Guard
+**Status:** not started
+
+- `TestIntegrationOrchestrator` and `TestIntegrationRouting` in
+  `test_integration.py` don't verify `OPENROUTER_API_KEY` is set before
+  running tests that exercise Claude paths
+- Add a `pytest.mark.skipif` or `skipUnless` check for the API key at the
+  class level so missing keys produce a clear skip rather than a confusing
+  `KeyError`
+
+---
+
+## Phase 15 — Dependency Management
+
+### T15.1 — Pin Major Version Bounds in `pyproject.toml`
+**Status:** not started
+
+- All dependencies use `>=` with no upper bounds — a breaking major version
+  update (e.g. Gradio 7.0, OpenAI SDK 3.0) could silently break the app
+- Switch to compatible-release constraints (`~=`) for key libraries:
+  `gradio~=6.10`, `openai~=2.30`, `kokoro-onnx~=0.5`, `ollama~=0.6`,
+  `openai-whisper~=20250625`
+- Keep `numpy` and `sounddevice` on `>=` — these have stable APIs
+- Run `uv sync` and `uv run pytest` after the change to verify nothing
+  breaks
+
+---
+
+## Phase 16 — Portability
+
+### T16.1 — Remove Absolute Path from `.claude/settings.json`
+**Status:** not started
+
+- The pre-commit hook hardcodes
+  `cd C:/Users/justi/Documents/GitHub/jm-cl-assistant`
+- If Claude Code hooks support `$PWD` or a relative path, use that instead
+- If not, document in CLAUDE.md that the path must be updated per-machine,
+  or remove the `cd` and rely on the hook running from the repo root
+  (verify this is the case)
+
+---
+
+## Phase 17 — Minor Code Quality
+
+### T17.1 — Initialise `last_backend` to a Sensible Default
+**Status:** not started
+
+- `orchestrator.py:44` sets `last_backend = ""` — if `_prefix_last_reply()`
+  is ever called before the first response, the chat bubble shows `**: text`
+- Initialise to `"(awaiting first query)"` or guard against empty string
+  in `_prefix_last_reply()`
+
+### T17.2 — Robust Backend Label Extraction
+**Status:** not started
+
+- `orchestrator.py:46-49` uses `.split('/')[-1]` to extract a display name
+  from the model string — breaks for model names without a `/`
+- Replace with: `name.split('/')[-1] if '/' in name else name`
+- Add a test with a model name that contains no `/`
+
+### T17.3 — Strip List Markers in `strip_markdown()`
+**Status:** not started
+
+- `helpers.py` `strip_markdown()` does not remove `- ` bullet prefixes
+  or `1. ` numbered list prefixes — TTS reads "dash" and "one dot"
+- Add regex passes for unordered markers (`^[-*+]\s+`, multiline) and
+  ordered markers (`^\d+\.\s+`, multiline)
+- Add tests for bullet and numbered list input in `test_helpers.py`
+
+---
+
+## Phase 18 — Tools
+
+### Implementation Strategy
+
+There are two approaches to giving the assistant access to tools:
+
+**Approach A — Router-dispatched (current plan):**
+The Ollama router classifies the query into a tool-specific tier (e.g. `maths`,
+`weather`, `datetime`) and the orchestrator calls the tool directly without
+involving an LLM. This is fast, cheap, and deterministic — but it requires the
+small classification model to correctly identify every tool-worthy query, and
+each new tool needs a new routing tier in the system prompt.
+
+**Approach B — LLM tool use (function calling):**
+The OpenAI-compatible API (and Claude natively) supports a `tools` parameter
+where you define function schemas. The model decides when to call a tool,
+generates structured arguments, and the client executes the function and feeds
+the result back. This is more flexible — the model can chain tools, use tools
+mid-conversation, and handle ambiguous queries — but it only works for the
+Claude tiers (Sonnet/Opus via OpenRouter), not the local Ollama models which
+have limited or no tool-use support.
+
+**Recommended hybrid approach:**
+- Use **Approach A** (router-dispatched) for tools that map to obvious,
+  unambiguous queries: calculator, datetime, weather. These are fast and
+  don't need LLM judgement.
+- Use **Approach B** (LLM tool use) for tools that benefit from model
+  judgement: web search (deciding what to search for), location-aware
+  follow-ups, or chaining multiple tools. Register tool schemas with the
+  OpenRouterClient and handle the tool-call response loop.
+- Start with Approach A for all tools (simpler), then migrate selected tools
+  to Approach B once the basic infrastructure works.
+
+### Tool definitions vs Claude Code skills — keeping them separate
+
+This project is built using Claude Code, which has its own skill/hook system
+(defined in `.claude/` and invoked via slash commands during development).
+The tools defined in this phase are **runtime tools for the assistant app** —
+they live in `src/tools/` and are called by `Orchestrator.respond()` at
+runtime. The two systems are completely separate:
+
+| Concern | Claude Code skills | Assistant runtime tools |
+|---------|-------------------|------------------------|
+| Where defined | `.claude/`, `CLAUDE.md` | `src/tools/*.py` |
+| When invoked | During development (by the dev) | At runtime (by the app) |
+| Who calls them | Claude Code CLI | `Orchestrator.respond()` |
+| Configuration | `settings.json`, slash commands | Router tiers or LLM `tools` param |
+
+To keep the boundary clear:
+- All runtime tool code lives under `src/tools/` (never in `.claude/`)
+- Tool schemas for LLM function calling (Approach B) are defined in a
+  `src/tools/registry.py` module, not in any Claude Code config file
+- The word "skill" is reserved for Claude Code; the app calls its own
+  capabilities "tools"
+- Tests for runtime tools live in `tests/test_*.py` alongside existing tests
+
+### Current tool inventory
 
 The router currently routes arithmetic and maths calculations to `simple_ollama`
 (the 8B model) because LLMs can produce incorrect results for numerical
-computation. Phase 11 replaces that with a dedicated tool so maths is solved
-reliably and cheaply without involving a large model.
+computation. Phase 18 replaces that with dedicated tools so deterministic
+tasks are solved reliably and cheaply without involving a large model.
 
-### T11.1 — Calculator Tool
+### T18.1 — Calculator Tool
 **Status:** not started
 
 - Implement a `calculate(expression: str) -> str` tool in `src/tools/calculator.py`
@@ -555,7 +950,7 @@ reliably and cheaply without involving a large model.
   expression is invalid
 - Add unit tests in `tests/test_calculator.py`
 
-### T11.2 — Integrate Calculator into Orchestrator
+### T18.2 — Integrate Calculator into Orchestrator
 **Status:** not started
 
 - Add a `maths` classification tier to the router system prompt so arithmetic
@@ -565,7 +960,7 @@ reliably and cheaply without involving a large model.
 - Update `_backend_labels` to include a `"maths"` entry (e.g. `"Tool: calculator"`)
 - Update tests in `test_orchestrator.py` and `test_router.py`
 
-### T11.3 — Unit Conversion Tool (stretch)
+### T18.3 — Unit Conversion Tool (stretch)
 **Status:** not started
 
 - Implement a `convert(value, from_unit, to_unit) -> str` tool in
@@ -574,7 +969,7 @@ reliably and cheaply without involving a large model.
 - Integrate into orchestrator similarly to the calculator
 - Add unit tests in `tests/test_converter.py`
 
-### T11.4 — Web Search Tool
+### T18.4 — Web Search Tool
 **Status:** not started
 
 - Implement a `web_search(query: str) -> str` tool in `src/tools/web_search.py`
@@ -587,7 +982,7 @@ reliably and cheaply without involving a large model.
 - Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: web search"`
 - Add unit tests in `tests/test_web_search.py` (mock HTTP calls)
 
-### T11.5 — Location Tool (IP Lookup)
+### T18.5 — Location Tool (IP Lookup)
 **Status:** not started
 
 - Implement a `get_location() -> dict` tool in `src/tools/location.py`
@@ -599,7 +994,7 @@ reliably and cheaply without involving a large model.
   location string (e.g. `"London, England, GB"`) for use by other tools
 - Add unit tests in `tests/test_location.py` (mock HTTP calls)
 
-### T11.6 — Date and Time Tool
+### T18.6 — Date and Time Tool
 **Status:** not started
 
 - Implement a `get_datetime(timezone: str | None = None) -> str` tool in
@@ -607,14 +1002,14 @@ reliably and cheaply without involving a large model.
 - Return the current date and time formatted as a readable string
   (e.g. `"Sunday 29 March 2026, 14:35 BST"`)
 - If no timezone is supplied, attempt to infer it from the location tool
-  (T11.5); fall back to UTC with a note
+  (T18.5); fall back to UTC with a note
 - Use the `zoneinfo` stdlib module (Python 3.9+) — no extra dependency needed
 - Add a `datetime` classification tier to the router system prompt for
   queries about the current time or date
 - Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: datetime"`
 - Add unit tests in `tests/test_datetime_tool.py`
 
-### T11.7 — Weather Forecast Tool
+### T18.7 — Weather Forecast Tool
 **Status:** not started
 
 - Implement a `get_weather(location: str, days: int = 7) -> str` tool in
@@ -623,12 +1018,103 @@ reliably and cheaply without involving a large model.
   Open-Meteo geocoding endpoint to resolve location names to coordinates
 - Return a day-by-day forecast summary for up to 7 days: date, condition,
   high/low temperature (°C), precipitation probability
-- If `location` is `"auto"`, call the location tool (T11.5) to resolve the
+- If `location` is `"auto"`, call the location tool (T18.5) to resolve the
   user's current location automatically
 - Format output as plain text suitable for reading aloud via TTS
 - Add a `weather` classification tier to the router system prompt
 - Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: weather"`
 - Add unit tests in `tests/test_weather.py` (mock HTTP calls)
+
+### T18.8 — Tool Registry and LLM Function Calling Infrastructure
+**Status:** not started
+
+- Create `src/tools/registry.py` containing a `ToolRegistry` class that:
+  - Stores tool definitions as OpenAI-compatible function schemas (name,
+    description, parameters JSON schema)
+  - Maps tool names to callable Python functions
+  - Provides a `schemas()` method returning the list for the API `tools` param
+  - Provides an `execute(name, arguments) -> str` method to dispatch a call
+- Update `OpenRouterClient.ask()` to optionally accept a `tools` list and
+  handle the tool-call response loop: send tools → receive tool_use stop
+  reason → execute tool → send tool result → receive final response
+- This is the foundation for Approach B tools (LLM-chosen tool use)
+- Add unit tests in `tests/test_registry.py`
+
+### T18.9 — Currency Conversion Tool
+**Status:** not started
+
+- Implement `convert_currency(amount, from_code, to_code) -> str` in
+  `src/tools/currency.py`
+- Use the free frankfurter.app API (no key required, ECB exchange rates,
+  updated daily) or exchangerate.host as a fallback
+- Return a formatted string (e.g. "100.00 USD = 91.47 EUR (rate: 0.9147)")
+- Cache exchange rates for the session to avoid repeated lookups
+- Good candidate for Approach A (router-dispatched) — queries like "convert
+  50 euros to dollars" are unambiguous
+- Add unit tests in `tests/test_currency.py` (mock HTTP calls)
+
+### T18.10 — Dictionary / Definition Tool
+**Status:** not started
+
+- Implement `define(word: str) -> str` in `src/tools/dictionary.py`
+- Use the Free Dictionary API (dictionaryapi.dev, no key required)
+- Return: word, phonetic, part of speech, top 2-3 definitions, and an
+  example sentence if available
+- Format as plain text suitable for TTS
+- Good candidate for Approach A — "define serendipity" or "what does
+  ephemeral mean" are clear triggers
+- Add unit tests in `tests/test_dictionary.py` (mock HTTP calls)
+
+### T18.11 — Wikipedia Summary Tool
+**Status:** not started
+
+- Implement `wiki_summary(topic: str) -> str` in `src/tools/wikipedia.py`
+- Use the Wikipedia REST API (`en.wikipedia.org/api/rest_v1/page/summary/`)
+  — no key required, returns a plain-text extract
+- Return the first 2-3 sentences of the article summary, plus the URL
+- Good candidate for Approach B (LLM tool use) — the model can decide when
+  a factual query would benefit from Wikipedia vs its own knowledge, and
+  can rephrase the search term for better results
+- Add unit tests in `tests/test_wikipedia.py` (mock HTTP calls)
+
+### T18.12 — URL Content Summariser
+**Status:** not started
+
+- Implement `summarise_url(url: str) -> str` in `src/tools/url_reader.py`
+- Fetch the page content, extract readable text (use `trafilatura` or
+  `beautifulsoup4` + `requests`), and truncate to a reasonable length
+- Pass the extracted text to the current Claude tier with a "summarise this
+  page" system prompt, returning the summary
+- Best suited for Approach B — the model detects a URL in the user's message
+  and decides to fetch and summarise it
+- Add unit tests in `tests/test_url_reader.py` (mock HTTP calls)
+
+### T18.13 — Reminder / Timer Tool
+**Status:** not started
+
+- Implement a session-scoped reminder system in `src/tools/reminders.py`
+- `set_reminder(message: str, minutes: int) -> str` — schedules a callback
+  that pushes a notification into the Gradio chat after the delay
+- `list_reminders() -> str` — shows active reminders
+- Requires Gradio's `gr.Timer` or background thread to inject messages
+  into the chat after a delay — investigate feasibility
+- Good candidate for Approach B — the model parses natural language like
+  "remind me in 10 minutes to check the oven"
+- Add unit tests in `tests/test_reminders.py`
+
+### T18.14 — System Info Tool
+**Status:** not started
+
+- Implement `system_info() -> str` in `src/tools/sysinfo.py`
+- Return a summary of the host machine: OS, CPU, RAM total/available,
+  GPU name and VRAM (via `torch.cuda` if available), Python version,
+  loaded Ollama models
+- Uses only stdlib (`platform`, `os`, `shutil`) plus optional `torch`
+- Useful for debugging and for the assistant to understand its own
+  environment (e.g. "how much VRAM do I have free?")
+- Router-dispatched (Approach A) — queries like "system info" or "how
+  much memory do I have" are unambiguous
+- Add unit tests in `tests/test_sysinfo.py`
 
 ---
 
@@ -646,8 +1132,15 @@ reliably and cheaply without involving a large model.
 | 7 | Refinements | T7.1 → T7.9 | complete |
 | 8 | Text to Speech Debugging | T8.1 → T8.8 | complete |
 | 9 | Routing Tiers | T9.1 → T9.4 | complete |
-| 10 | Speech to Text Debugging | T10.1 | not started |
-| 11 | Tools | T11.1 → T11.7 | not started |
+| 10 | Speech to Text Debugging | T10.1 → T10.7 | complete |
+| 11 | Error Handling | T11.1 → T11.6 | not started |
+| 12 | Unused `sample_rate` Parameter | T12.1 | not started |
+| 13 | Documentation Refresh | T13.1 → T13.4 | not started |
+| 14 | Testing Gaps | T14.1 → T14.3 | not started |
+| 15 | Dependency Management | T15.1 | not started |
+| 16 | Portability | T16.1 | not started |
+| 17 | Minor Code Quality | T17.1 → T17.3 | not started |
+| 18 | Tools | T18.1 → T18.14 | not started |
 
 ---
 

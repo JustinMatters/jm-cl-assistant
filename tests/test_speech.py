@@ -37,8 +37,28 @@ class TestWhisperTranscriber:
         mock_load = mocker.patch("src.speech_input.whisper.load_model")
         mock_load.return_value = mocker.MagicMock()
         mock_load.return_value.transcribe.return_value = {"text": ""}
-        WhisperTranscriber()
+        transcriber = WhisperTranscriber()
+        transcriber.transcribe(np.zeros(16000, dtype=np.float32), 16000)
         mock_load.assert_called_once_with("medium")
+
+    def test_model_loaded_lazily_on_first_call(self, mocker):
+        mock_load = mocker.patch("src.speech_input.whisper.load_model")
+        mock_load.return_value = mocker.MagicMock()
+        mock_load.return_value.transcribe.return_value = {"text": ""}
+        transcriber = WhisperTranscriber()
+        mock_load.assert_not_called()
+        transcriber.transcribe(np.zeros(16000, dtype=np.float32), 16000)
+        mock_load.assert_called_once()
+
+    def test_model_not_reloaded_on_second_call(self, mocker):
+        mock_load = mocker.patch("src.speech_input.whisper.load_model")
+        mock_load.return_value = mocker.MagicMock()
+        mock_load.return_value.transcribe.return_value = {"text": ""}
+        transcriber = WhisperTranscriber()
+        audio = np.zeros(16000, dtype=np.float32)
+        transcriber.transcribe(audio, 16000)
+        transcriber.transcribe(audio, 16000)
+        mock_load.assert_called_once()
 
     def test_transcribe_called_with_audio_array(self, mocker):
         mock_model = mocker.MagicMock()
@@ -63,6 +83,48 @@ class TestWhisperTranscriber:
         silent_audio = np.zeros(16000, dtype=np.float32)
         result = transcriber.transcribe(silent_audio, 16000)
         assert isinstance(result, str)
+
+    def test_high_no_speech_prob_returns_empty(self, mocker):
+        mock_model = mocker.MagicMock()
+        mock_model.transcribe.return_value = {
+            "text": "maybe some hallucinated text",
+            "segments": [{"no_speech_prob": 0.95}],
+        }
+        mocker.patch(
+            "src.speech_input.whisper.load_model",
+            return_value=mock_model,
+        )
+        transcriber = WhisperTranscriber()
+        audio = np.zeros(16000, dtype=np.float32)
+        result = transcriber.transcribe(audio, 16000)
+        assert result == ""
+
+    def test_low_no_speech_prob_returns_text(self, mocker):
+        mock_model = mocker.MagicMock()
+        mock_model.transcribe.return_value = {
+            "text": "Hello world",
+            "segments": [{"no_speech_prob": 0.05}],
+        }
+        mocker.patch(
+            "src.speech_input.whisper.load_model",
+            return_value=mock_model,
+        )
+        transcriber = WhisperTranscriber()
+        audio = np.zeros(16000, dtype=np.float32)
+        result = transcriber.transcribe(audio, 16000)
+        assert result == "Hello world"
+
+    def test_no_segments_returns_text(self, mocker):
+        mock_model = mocker.MagicMock()
+        mock_model.transcribe.return_value = {"text": "Hello world"}
+        mocker.patch(
+            "src.speech_input.whisper.load_model",
+            return_value=mock_model,
+        )
+        transcriber = WhisperTranscriber()
+        audio = np.zeros(16000, dtype=np.float32)
+        result = transcriber.transcribe(audio, 16000)
+        assert result == "Hello world"
 
 
 class TestKokoroSpeaker:
