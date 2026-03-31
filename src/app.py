@@ -157,6 +157,19 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
         def _prefix_last_reply(
             history: list, response: str, show: bool
         ) -> list:
+            """Prepend the backend label to the last assistant message.
+
+            Args:
+                history: Updated history returned by the orchestrator,
+                  whose last entry is the raw assistant response.
+                response: The raw assistant response text.
+                show: If ``False``, ``<think>`` blocks are stripped before
+                  display.
+
+            Returns:
+                A copy of ``history`` with the last entry's content
+                replaced by a labelled, optionally filtered string.
+            """
             content = response if show else strip_think_tags(response)
             display = list(history)
             display[-1] = {
@@ -166,6 +179,19 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
             return display
 
         def handle_text(query, history, out_mode, show, voice):
+            """Handle a text query submitted via the text input or send button.
+
+            Args:
+                query: The user's typed message.
+                history: Current conversation history.
+                out_mode: Output mode — ``"text"`` or ``"text and speech"``.
+                show: Whether to show ``<think>`` tags in the response.
+                voice: Kokoro voice ID for TTS synthesis.
+
+            Returns:
+                A tuple of ``(display_history, history_state, cleared_input,
+                audio_out)`` suitable for Gradio's ``outputs`` list.
+            """
             if not query.strip():
                 return history, history, "", None
             response, updated_history = orchestrator.respond(query, history)
