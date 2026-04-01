@@ -110,7 +110,17 @@ def process_audio(
         )
 
     # ── Orchestrator dispatch ─────────────────────────────────────────────
-    response, updated_history = orchestrator.respond(query, history)
+    try:
+        response, updated_history = orchestrator.respond(query, history)
+    except ConnectionError:
+        return (
+            _audio_err(
+                history,
+                "Ollama is not running — please start it with `ollama serve`",
+            ),
+            history,
+            None,
+        )
     content = response if show else strip_think_tags(response)
     display_history = list(updated_history)
     display_history[-1] = {
