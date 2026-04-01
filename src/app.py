@@ -6,22 +6,20 @@ to show or hide LLM chain-of-thought ``<think>`` tags.
 """
 
 import argparse
+import os
 import subprocess
 import time
 
 import gradio as gr
 import ollama
 
-from src.helpers import (
-    strip_markdown,
-    strip_think_tags,
-    suppress_connection_reset_errors,
-    to_wav_bytes,
-)
+from src.helpers import suppress_connection_reset_errors
 from src.orchestrator import Orchestrator
 from src.process_audio import process_audio
+from src.process_text import process_text
+from src.router import OLLAMA_FAST_MODEL
 from src.speech_input import WhisperTranscriber
-from src.speech_output import KokoroSpeaker
+from src.speech_output import KokoroSpeaker, check_kokoro_files
 
 OLLAMA_MODEL_DEFAULT = "sam860/deepseek-r1-0528-qwen3:8b"
 
@@ -63,6 +61,46 @@ def _ensure_ollama(max_wait: int = 10) -> str | None:
         "Ollama was found but did not start within "
         f"{max_wait} seconds. Try running `ollama serve` manually."
     )
+
+
+def _check_ollama_models(*models: str) -> str | None:
+    """Check that required Ollama models are available locally.
+
+    Silently returns ``None`` if Ollama is unreachable — that failure is
+    already reported by ``_ensure_ollama``.
+
+    Args:
+        *models: Model name strings to verify are pulled.
+
+    Returns:
+        A warning string listing any missing models with pull commands,
+        or ``None`` if all models are present or Ollama is unreachable.
+    """
+    try:
+        available = {m.model for m in ollama.list().models}
+    except Exception:
+        return None
+    missing = [model for model in models if model not in available]
+    if missing:
+        pull_cmds = " && ".join(f"ollama pull {m}" for m in missing)
+        return (
+            f"Ollama models not pulled: {', '.join(missing)}. Run: {pull_cmds}"
+        )
+    return None
+
+
+def _check_api_key() -> str | None:
+    """Check that OPENROUTER_API_KEY is set in the environment.
+
+    Returns:
+        A warning string if the key is absent, or ``None`` if it is set.
+    """
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        return (
+            "OPENROUTER_API_KEY is not set — "
+            "Claude (Sonnet/Opus) will be unavailable"
+        )
+    return None
 
 
 WHISPER_MODEL_DEFAULT = "medium"
@@ -217,30 +255,6 @@ def build_app(
 
         # ── Text input flow ─────────────────────────────────────────────────
 
-        def _prefix_last_reply(
-            history: list, response: str, show: bool
-        ) -> list:
-            """Prepend the backend label to the last assistant message.
-
-            Args:
-                history: Updated history returned by the orchestrator,
-                  whose last entry is the raw assistant response.
-                response: The raw assistant response text.
-                show: If ``False``, ``<think>`` blocks are stripped before
-                  display.
-
-            Returns:
-                A copy of ``history`` with the last entry's content
-                replaced by a labelled, optionally filtered string.
-            """
-            content = response if show else strip_think_tags(response)
-            display = list(history)
-            display[-1] = {
-                "role": "assistant",
-                "content": f"**{orchestrator.last_backend}:** {content}",
-            }
-            return display
-
         def handle_text(query, history, out_mode, show, voice):
             """Handle a text query submitted via the text input or send button.
 
@@ -257,28 +271,16 @@ def build_app(
             """
             if not query.strip():
                 return history, history, "", None
-            try:
-                response, updated_history = orchestrator.respond(query, history)
-            except ConnectionError:
-                err = (
-                    "Ollama is not running — "
-                    "please start it with `ollama serve`"
-                )
-                err_display = list(history) + [
-                    {"role": "user", "content": query},
-                    {"role": "assistant", "content": f"(Error: {err})"},
-                ]
-                return err_display, history, "", None
-            display_history = _prefix_last_reply(
-                updated_history, response, show
+            display_history, updated_history, audio_out = process_text(
+                query,
+                history,
+                out_mode,
+                show,
+                voice,
+                orchestrator,
+                speaker,
+                lambda: orchestrator.last_backend,
             )
-            audio_out = None
-            if out_mode == "text and speech":
-                speech_text = response if show else strip_think_tags(response)
-                arr, sr = speaker.synthesize(
-                    strip_markdown(speech_text), voice=voice
-                )
-                audio_out = to_wav_bytes(arr, sr)
             return display_history, updated_history, "", audio_out
 
         submit_btn.click(
@@ -321,22 +323,36 @@ def build_app(
                     gr.update(),
                     gr.update(),
                 )
-            display_history, updated_history, audio_out = process_audio(
-                audio_data,
-                history,
-                out_mode,
-                show,
-                voice,
-                transcriber,
-                orchestrator,
-                speaker,
-            )
-            return (
-                display_history,
-                updated_history,
-                audio_out,
-                gr.update(value=None),  # reset recorder
-            )
+            try:
+                display_history, updated_history, audio_out = process_audio(
+                    audio_data,
+                    history,
+                    out_mode,
+                    show,
+                    voice,
+                    transcriber,
+                    orchestrator,
+                    speaker,
+                )
+                return (
+                    display_history,
+                    updated_history,
+                    audio_out,
+                    gr.update(value=None),  # reset recorder
+                )
+            except Exception as exc:  # noqa: BLE001
+                err_display = list(history) + [
+                    {
+                        "role": "assistant",
+                        "content": f"(Error: {exc})",
+                    }
+                ]
+                return (
+                    err_display,
+                    history,
+                    None,
+                    gr.update(value=None),  # reset recorder
+                )
 
         audio_input.change(
             handle_audio,
@@ -368,8 +384,16 @@ def main():
     )
     args = parser.parse_args()
     suppress_connection_reset_errors()
-    warning = _ensure_ollama()
-    if warning:
-        print(f"Warning: {warning}")
-    demo = build_app(args.whisper_model, args.ollama_model, warning)
+    startup_warnings = []
+    for warn in (
+        _ensure_ollama(),
+        _check_ollama_models(OLLAMA_FAST_MODEL, args.ollama_model),
+        _check_api_key(),
+        check_kokoro_files(),
+    ):
+        if warn:
+            print(f"Warning: {warn}")
+            startup_warnings.append(warn)
+    startup_warning = "\n\n".join(startup_warnings) or None
+    demo = build_app(args.whisper_model, args.ollama_model, startup_warning)
     demo.launch()

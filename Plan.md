@@ -149,7 +149,7 @@ sees a raw Python traceback instead of a helpful message. This phase adds
 resilience across every boundary.
 
 ### T11.1 — Ollama Call Protection
-**Status:** not started
+**Status:** complete
 
 - Wrap `ollama.chat()` calls in `orchestrator.py` (`_ollama_respond`) and
   `router.py` (`classify`) in try/except
@@ -161,7 +161,7 @@ resilience across every boundary.
 - Add unit tests that mock `ollama.chat` raising each exception type
 
 ### T11.2 — OpenRouter Call Protection
-**Status:** not started
+**Status:** complete
 
 - Wrap the `self._client.chat.completions.create()` call in
   `openrouter_client.py` in try/except
@@ -173,7 +173,7 @@ resilience across every boundary.
 - Add unit tests for each exception path
 
 ### T11.3 — Friendly Missing API Key Error
-**Status:** not started
+**Status:** complete
 
 - `OpenRouterClient.__init__` raises a bare `KeyError` when
   `OPENROUTER_API_KEY` is not set
@@ -183,7 +183,7 @@ resilience across every boundary.
   new `ValueError` and message text
 
 ### T11.4 — Kokoro Model File Check
-**Status:** not started
+**Status:** complete
 
 - At startup in `build_app()`, check whether `kokoro-v1.0.onnx` and
   `voices-v1.0.bin` exist in the project root
@@ -194,7 +194,7 @@ resilience across every boundary.
   a crash on first TTS request
 
 ### T11.5 — Gradio Handler Crash Protection
-**Status:** not started
+**Status:** complete
 
 - Wrap the bodies of `handle_text()` and `handle_audio()` in `app.py` in
   try/except blocks
@@ -207,7 +207,7 @@ resilience across every boundary.
   downstream components raise exceptions
 
 ### T11.6 — Startup Health Checks
-**Status:** not started
+**Status:** complete
 
 - Add an optional startup check in `build_app()` that verifies:
   - Ollama is reachable (`ollama.list()` succeeds)

@@ -136,3 +136,41 @@ class TestOllamaRouterClassify:
         router = OllamaRouter()
         result = router.classify(query)
         assert result in VALID_CLASSIFICATIONS
+
+
+class TestOllamaRouterErrorHandling:
+    def test_connection_error_falls_back_to_trivial_ollama(self, mocker):
+        mocker.patch(
+            "src.router.ollama.chat",
+            side_effect=ConnectionError("Ollama not running"),
+        )
+        router = OllamaRouter()
+        result = router.classify("hi")
+        assert result == "trivial_ollama"
+
+    def test_response_error_falls_back_to_trivial_ollama(self, mocker):
+        mocker.patch(
+            "src.router.ollama.chat",
+            side_effect=Exception("ResponseError: model not found"),
+        )
+        router = OllamaRouter()
+        result = router.classify("hi")
+        assert result == "trivial_ollama"
+
+    def test_generic_exception_falls_back_to_trivial_ollama(self, mocker):
+        mocker.patch(
+            "src.router.ollama.chat",
+            side_effect=RuntimeError("unexpected failure"),
+        )
+        router = OllamaRouter()
+        result = router.classify("hi")
+        assert result == "trivial_ollama"
+
+    def test_connection_error_emits_warning(self, mocker):
+        mocker.patch(
+            "src.router.ollama.chat",
+            side_effect=ConnectionError("Ollama not running"),
+        )
+        router = OllamaRouter()
+        with pytest.warns(UserWarning, match="Ollama router failed"):
+            router.classify("hi")

@@ -1,3 +1,4 @@
+import openai
 import pytest
 
 openrouter_module = pytest.importorskip("src.openrouter_client")
@@ -80,8 +81,65 @@ class TestOpenRouterClientAsk:
         _, kwargs = mock_openai.call_args
         assert kwargs.get("api_key") == "test-key-123"
 
-    def test_missing_api_key_raises(self, mocker):
+    def test_missing_api_key_raises_value_error(self, mocker):
         mocker.patch.dict("os.environ", {}, clear=True)
         mocker.patch("src.openrouter_client.openai.OpenAI")
-        with pytest.raises((KeyError, ValueError, RuntimeError)):
+        with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
             OpenRouterClient()
+
+    def test_timeout_passed_to_create(self, mocker):
+        mock_openai = mocker.patch("src.openrouter_client.openai.OpenAI")
+        mock_create = mock_openai.return_value.chat.completions.create
+        mock_create.return_value.choices[0].message.content = "answer"
+        client = OpenRouterClient()
+        client.ask("A question?", "sonnet", [])
+        _, kwargs = mock_create.call_args
+        assert "timeout" in kwargs
+
+
+class TestOpenRouterClientErrorHandling:
+    def _make_client(self, mocker):
+        mocker.patch("src.openrouter_client.openai.OpenAI")
+        return OpenRouterClient()
+
+    def _mock_create(self, mocker):
+        mock_openai = mocker.patch("src.openrouter_client.openai.OpenAI")
+        return mock_openai.return_value.chat.completions.create
+
+    def test_authentication_error_returns_friendly_string(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.side_effect = openai.AuthenticationError(
+            "Unauthorized", response=mocker.MagicMock(), body=None
+        )
+        client = OpenRouterClient()
+        result = client.ask("question", "sonnet", [])
+        assert "authentication failed" in result.lower()
+
+    def test_rate_limit_error_returns_friendly_string(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.side_effect = openai.RateLimitError(
+            "Too Many Requests", response=mocker.MagicMock(), body=None
+        )
+        client = OpenRouterClient()
+        result = client.ask("question", "sonnet", [])
+        assert "rate limit" in result.lower()
+
+    def test_connection_error_returns_friendly_string(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.side_effect = openai.APIConnectionError(
+            request=mocker.MagicMock()
+        )
+        client = OpenRouterClient()
+        result = client.ask("question", "sonnet", [])
+        assert "unreachable" in result.lower()
+
+    def test_api_status_error_includes_status_code(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_response = mocker.MagicMock()
+        mock_response.status_code = 503
+        mock_create.side_effect = openai.APIStatusError(
+            "Service Unavailable", response=mock_response, body=None
+        )
+        client = OpenRouterClient()
+        result = client.ask("question", "sonnet", [])
+        assert "503" in result

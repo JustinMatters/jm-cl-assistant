@@ -92,5 +92,8 @@ class Orchestrator:
             The model's response text.
         """
         messages = list(history) + [{"role": "user", "content": query}]
-        result = ollama.chat(model=model, messages=messages)
-        return result["message"]["content"]
+        try:
+            result = ollama.chat(model=model, messages=messages)
+            return result["message"]["content"]
+        except Exception as exc:
+            return f"(Ollama error: {exc} — please check it is running)"

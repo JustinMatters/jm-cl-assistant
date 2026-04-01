@@ -5,6 +5,7 @@ speech_input_module = pytest.importorskip("src.speech_input")
 speech_output_module = pytest.importorskip("src.speech_output")
 WhisperTranscriber = speech_input_module.WhisperTranscriber
 KokoroSpeaker = speech_output_module.KokoroSpeaker
+check_kokoro_files = speech_output_module.check_kokoro_files
 
 
 class TestWhisperTranscriber:
@@ -239,3 +240,57 @@ class TestKokoroSpeaker:
         speaker.synthesize("Hello")
         _, kwargs = mock_instance.create.call_args
         assert kwargs["voice"] == "af_heart"
+
+    def test_synthesize_raises_clearly_on_missing_model_files(self, mocker):
+        mocker.patch(
+            "src.speech_output.Kokoro",
+            side_effect=FileNotFoundError("kokoro-v1.0.onnx not found"),
+        )
+        speaker = KokoroSpeaker()
+        with pytest.raises(FileNotFoundError, match="Kokoro model files"):
+            speaker.synthesize("Hello")
+
+    def test_synthesize_raises_clearly_on_corrupt_model(self, mocker):
+        mocker.patch(
+            "src.speech_output.Kokoro",
+            side_effect=RuntimeError("invalid ONNX model"),
+        )
+        speaker = KokoroSpeaker()
+        with pytest.raises(RuntimeError, match="Kokoro model failed to load"):
+            speaker.synthesize("Hello")
+
+
+class TestCheckKokoroFiles:
+    def test_returns_none_when_both_files_present(self, mocker):
+        mocker.patch(
+            "src.speech_output.Path.exists",
+            return_value=True,
+        )
+        assert check_kokoro_files() is None
+
+    def test_returns_warning_when_both_files_missing(self, mocker):
+        mocker.patch(
+            "src.speech_output.Path.exists",
+            return_value=False,
+        )
+        result = check_kokoro_files()
+        assert result is not None
+        assert "kokoro-v1.0.onnx" in result
+        assert "voices-v1.0.bin" in result
+
+    def test_returns_warning_when_one_file_missing(self, mocker):
+        mocker.patch(
+            "src.speech_output.Path.exists",
+            side_effect=[True, False],
+        )
+        result = check_kokoro_files()
+        assert result is not None
+        assert "TTS will be unavailable" in result
+
+    def test_warning_mentions_missing_filename(self, mocker):
+        mocker.patch(
+            "src.speech_output.Path.exists",
+            side_effect=[False, True],
+        )
+        result = check_kokoro_files()
+        assert "kokoro-v1.0.onnx" in result

@@ -5,6 +5,7 @@ simple_ollama, complex_sonnet, or complex_opus — by prompting a local
 LLM to classify the query's difficulty.
 """
 
+import warnings
 from typing import Literal
 
 import ollama
@@ -75,14 +76,22 @@ class OllamaRouter:
             One of ``"trivial_ollama"``, ``"simple_ollama"``,
             ``"complex_sonnet"``, or ``"complex_opus"``.
         """
-        response = ollama.chat(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": query or "(empty query)"},
-            ],
-        )
-        raw = response["message"]["content"].strip().lower()
+        try:
+            response = ollama.chat(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": query or "(empty query)"},
+                ],
+            )
+            raw = response["message"]["content"].strip().lower()
+        except Exception as exc:
+            warnings.warn(
+                f"Ollama router failed ({exc!r}); "
+                f"falling back to {_FALLBACK!r}",
+                stacklevel=2,
+            )
+            return _FALLBACK
         if raw in _VALID:
             return raw  # type: ignore[return-value]
         return _FALLBACK

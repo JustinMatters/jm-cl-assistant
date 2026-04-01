@@ -132,3 +132,46 @@ class TestOrchestratorRespond:
         mock_claude = mocker.patch("src.orchestrator.OpenRouterClient.ask")
         orch.respond("A simple question.", [])
         mock_claude.assert_not_called()
+
+
+class TestOrchestratorOllamaErrorHandling:
+    def test_connection_error_returns_friendly_string(self, mocker):
+        mocker.patch(
+            "src.orchestrator.OllamaRouter.classify",
+            return_value="trivial_ollama",
+        )
+        mocker.patch(
+            "src.orchestrator.ollama.chat",
+            side_effect=ConnectionError("Ollama not running"),
+        )
+        orch = Orchestrator()
+        response, _ = orch.respond("hi", [])
+        assert "Ollama error" in response
+
+    def test_response_error_returns_friendly_string(self, mocker):
+        mocker.patch(
+            "src.orchestrator.OllamaRouter.classify",
+            return_value="simple_ollama",
+        )
+        mocker.patch(
+            "src.orchestrator.ollama.chat",
+            side_effect=Exception("model not found"),
+        )
+        orch = Orchestrator()
+        response, _ = orch.respond("A question", [])
+        assert "Ollama error" in response
+
+    def test_ollama_error_still_updates_history(self, mocker):
+        mocker.patch(
+            "src.orchestrator.OllamaRouter.classify",
+            return_value="trivial_ollama",
+        )
+        mocker.patch(
+            "src.orchestrator.ollama.chat",
+            side_effect=ConnectionError("Ollama not running"),
+        )
+        orch = Orchestrator()
+        _, history = orch.respond("hi", [])
+        assert len(history) == 2
+        assert history[0]["role"] == "user"
+        assert history[1]["role"] == "assistant"

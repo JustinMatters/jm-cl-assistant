@@ -1,7 +1,32 @@
 """Text-to-speech synthesis using the kokoro-onnx model."""
 
+from pathlib import Path
+
 import numpy as np
 from kokoro_onnx import Kokoro
+
+
+def check_kokoro_files(
+    model_path: str = "kokoro-v1.0.onnx",
+    voices_path: str = "voices-v1.0.bin",
+) -> str | None:
+    """Check that the Kokoro model files exist in the working directory.
+
+    Args:
+        model_path: Expected path to the ONNX model file.
+        voices_path: Expected path to the voices binary file.
+
+    Returns:
+        A warning string listing any missing files, or ``None`` if both
+        files are present.
+    """
+    missing = [p for p in (model_path, voices_path) if not Path(p).exists()]
+    if missing:
+        return (
+            "Kokoro model files not found — TTS will be unavailable. "
+            f"Missing: {', '.join(missing)}"
+        )
+    return None
 
 
 class KokoroSpeaker:
@@ -55,7 +80,18 @@ class KokoroSpeaker:
             and ``sample_rate`` is the sample rate in Hz.
         """
         if self._model is None:
-            self._model = Kokoro(self.model_path, self.voices_path)
+            try:
+                self._model = Kokoro(self.model_path, self.voices_path)
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(
+                    f"Kokoro model files not found ({exc}) — "
+                    "download kokoro-v1.0.onnx and voices-v1.0.bin "
+                    "to the project root"
+                ) from exc
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Kokoro model failed to load: {exc}"
+                ) from exc
         audio, sample_rate = self._model.create(
             text, voice=voice or self.voice, speed=self.speed
         )
