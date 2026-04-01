@@ -6,9 +6,11 @@ to show or hide LLM chain-of-thought ``<think>`` tags.
 """
 
 import argparse
+import subprocess
+import time
 
 import gradio as gr
-import numpy as np
+import ollama
 
 from src.helpers import (
     strip_markdown,
@@ -17,10 +19,52 @@ from src.helpers import (
     to_wav_bytes,
 )
 from src.orchestrator import Orchestrator
+from src.process_audio import process_audio
 from src.speech_input import WhisperTranscriber
 from src.speech_output import KokoroSpeaker
 
 OLLAMA_MODEL_DEFAULT = "sam860/deepseek-r1-0528-qwen3:8b"
+
+
+def _ensure_ollama(max_wait: int = 10) -> str | None:
+    """Start Ollama if it is not reachable, then wait for it to come up.
+
+    Args:
+        max_wait: Maximum seconds to wait after launching the server process.
+
+    Returns:
+        A warning string if Ollama could not be reached or started, or
+        ``None`` if Ollama is available.
+    """
+    try:
+        ollama.list()
+        return None
+    except ConnectionError:
+        pass
+    try:
+        subprocess.Popen(
+            ["ollama", "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return (
+            "Ollama is not installed. "
+            "Download it from https://ollama.com/download"
+        )
+    for _ in range(max_wait):
+        time.sleep(1)
+        try:
+            ollama.list()
+            return None
+        except ConnectionError:
+            continue
+    return (
+        "Ollama was found but did not start within "
+        f"{max_wait} seconds. Try running `ollama serve` manually."
+    )
+
+
 WHISPER_MODEL_DEFAULT = "medium"
 
 VOICES = [
@@ -31,7 +75,11 @@ VOICES = [
 ]
 
 
-def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
+def build_app(
+    whisper_model: str,
+    ollama_model: str,
+    startup_warning: str | None = None,
+) -> gr.Blocks:
     """Construct and return the Gradio Blocks application.
 
     Instantiates the orchestrator, transcriber, and speaker, then wires
@@ -42,6 +90,8 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
           (e.g. ``"tiny"``, ``"base"``, ``"medium"``).
         ollama_model: Ollama model name used for routing and simple
           query responses.
+        startup_warning: Optional warning shown as the first chatbot
+          message, e.g. when Ollama could not be started.
 
     Returns:
         A configured ``gr.Blocks`` instance ready to launch.
@@ -95,7 +145,20 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
             "20 lines": 620,
         }
 
-        chatbot = gr.Chatbot(label="Previous Conversation", height=120)
+        _initial_history: list = []
+        if startup_warning:
+            _initial_history = [
+                {
+                    "role": "assistant",
+                    "content": f"**Warning:** {startup_warning}",
+                }
+            ]
+
+        chatbot = gr.Chatbot(
+            label="Previous Conversation",
+            height=120,
+            value=_initial_history,
+        )
 
         text_input = gr.Textbox(
             placeholder="Type your message...",
@@ -157,6 +220,19 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
         def _prefix_last_reply(
             history: list, response: str, show: bool
         ) -> list:
+            """Prepend the backend label to the last assistant message.
+
+            Args:
+                history: Updated history returned by the orchestrator,
+                  whose last entry is the raw assistant response.
+                response: The raw assistant response text.
+                show: If ``False``, ``<think>`` blocks are stripped before
+                  display.
+
+            Returns:
+                A copy of ``history`` with the last entry's content
+                replaced by a labelled, optionally filtered string.
+            """
             content = response if show else strip_think_tags(response)
             display = list(history)
             display[-1] = {
@@ -166,9 +242,33 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
             return display
 
         def handle_text(query, history, out_mode, show, voice):
+            """Handle a text query submitted via the text input or send button.
+
+            Args:
+                query: The user's typed message.
+                history: Current conversation history.
+                out_mode: Output mode — ``"text"`` or ``"text and speech"``.
+                show: Whether to show ``<think>`` tags in the response.
+                voice: Kokoro voice ID for TTS synthesis.
+
+            Returns:
+                A tuple of ``(display_history, history_state, cleared_input,
+                audio_out)`` suitable for Gradio's ``outputs`` list.
+            """
             if not query.strip():
                 return history, history, "", None
-            response, updated_history = orchestrator.respond(query, history)
+            try:
+                response, updated_history = orchestrator.respond(query, history)
+            except ConnectionError:
+                err = (
+                    "Ollama is not running — "
+                    "please start it with `ollama serve`"
+                )
+                err_display = list(history) + [
+                    {"role": "user", "content": query},
+                    {"role": "assistant", "content": f"(Error: {err})"},
+                ]
+                return err_display, history, "", None
             display_history = _prefix_last_reply(
                 updated_history, response, show
             )
@@ -205,25 +305,38 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
         )
 
         # ── Speech input flow ───────────────────────────────────────────────
+        # Transcribe the recording and dispatch to the orchestrator immediately.
+        # The transcribed query appears in the chat as the user message.
+        # audio_input is reset to None after processing so the record button
+        # becomes available again immediately.  The re-fired change event
+        # (audio_data=None) returns gr.update() for audio_output so playback
+        # is not interrupted.
 
         def handle_audio(audio_data, history, out_mode, show, voice):
             if audio_data is None:
-                return history, history, None
-            sample_rate, audio_array = audio_data
-            float_audio = audio_array.astype(np.float32) / 32768.0
-            query = transcriber.transcribe(float_audio, sample_rate)
-            response, updated_history = orchestrator.respond(query, history)
-            display_history = _prefix_last_reply(
-                updated_history, response, show
-            )
-            audio_out = None
-            if out_mode == "text and speech":
-                speech_text = response if show else strip_think_tags(response)
-                arr, sr = speaker.synthesize(
-                    strip_markdown(speech_text), voice=voice
+                # Re-fired by our own reset — leave everything unchanged.
+                return (
+                    gr.update(),
+                    history,
+                    gr.update(),
+                    gr.update(),
                 )
-                audio_out = to_wav_bytes(arr, sr)
-            return display_history, updated_history, audio_out
+            display_history, updated_history, audio_out = process_audio(
+                audio_data,
+                history,
+                out_mode,
+                show,
+                voice,
+                transcriber,
+                orchestrator,
+                speaker,
+            )
+            return (
+                display_history,
+                updated_history,
+                audio_out,
+                gr.update(value=None),  # reset recorder
+            )
 
         audio_input.change(
             handle_audio,
@@ -234,7 +347,7 @@ def build_app(whisper_model: str, ollama_model: str) -> gr.Blocks:
                 show_think,
                 voice_selector,
             ],
-            outputs=[chatbot, history_state, audio_output],
+            outputs=[chatbot, history_state, audio_output, audio_input],
         )
 
     return demo
@@ -255,5 +368,8 @@ def main():
     )
     args = parser.parse_args()
     suppress_connection_reset_errors()
-    demo = build_app(args.whisper_model, args.ollama_model)
+    warning = _ensure_ollama()
+    if warning:
+        print(f"Warning: {warning}")
+    demo = build_app(args.whisper_model, args.ollama_model, warning)
     demo.launch()
