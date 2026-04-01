@@ -625,7 +625,7 @@ tasks are solved reliably and cheaply without involving a large model.
 | 8 | Text to Speech Debugging | T8.1 → T8.8 | complete |
 | 9 | Routing Tiers | T9.1 → T9.4 | complete |
 | 10 | Speech to Text Debugging | T10.1 → T10.7 | complete |
-| 11 | Error Handling | T11.1 → T11.6 | not started |
+| 11 | Error Handling | T11.1 → T11.6 | complete |
 | 12 | Unused `sample_rate` Parameter | T12.1 | not started |
 | 13 | Documentation Refresh | T13.1 → T13.4 | not started |
 | 14 | Testing Gaps | T14.1 → T14.3 | not started |
