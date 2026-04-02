@@ -261,35 +261,20 @@ resilience across every boundary.
 
 ## Phase 14 — Testing Gaps
 
-### T14.1 — Unit Tests for `app.py` Event Handlers
-**Status:** not started
+Two of the three originally planned tickets were superseded before this phase
+started: handler logic was extracted and tested in T10.7 (`process_audio`) and
+T11.5 (`process_text`); error-path tests were added across all modules in
+Phase 11.
 
-- `app.py` has zero unit tests — the event handlers contain real logic:
-  int16-to-float32 conversion, history management, TTS gating, think-tag
-  stripping
-- Extract testable logic from `handle_text()` and `handle_audio()` into
-  helper functions, or test the handlers directly with mocked dependencies
-- Cross-reference: overlaps with T10.7 — coordinate to avoid duplication
-
-### T14.2 — Error-Path Tests Across All Modules
-**Status:** not started
-
-- No test file exercises failure scenarios: Ollama down, OpenRouter 429,
-  missing model files, corrupted audio input, empty API responses
-- Add parametrised tests that mock exceptions from `ollama.chat()`,
-  `openai.OpenAI.chat.completions.create()`, and `whisper.load_model()`
-- Verify that the error handling added in Phase 11 returns user-friendly
-  messages rather than raising unhandled exceptions
-
-### T14.3 — Integration Test API Key Guard
-**Status:** not started
+### T14.1 — Integration Test API Key Guard
+**Status:** complete
 
 - `TestIntegrationOrchestrator` and `TestIntegrationRouting` in
   `test_integration.py` don't verify `OPENROUTER_API_KEY` is set before
-  running tests that exercise Claude paths
-- Add a `pytest.mark.skipif` or `skipUnless` check for the API key at the
-  class level so missing keys produce a clear skip rather than a confusing
-  `KeyError`
+  running; `Orchestrator.__init__` instantiates `OpenRouterClient`, which
+  raises `ValueError` if the key is missing
+- Add a `pytest.mark.skipif` check at the class level so a missing key
+  produces a clean skip rather than a confusing `ValueError`
 
 ---
 
@@ -613,7 +598,7 @@ tasks are solved reliably and cheaply without involving a large model.
 | 11 | Error Handling | T11.1 → T11.6 | complete |
 | 12 | Unused `sample_rate` Parameter | T12.1 | complete |
 | 13 | Documentation Refresh | T13.1 → T13.4 | complete |
-| 14 | Testing Gaps | T14.1 → T14.3 | not started |
+| 14 | Testing Gaps | T14.1 | complete |
 | 15 | Dependency Management | T15.1 | not started |
 | 16 | Portability | T16.1 | not started |
 | 17 | Minor Code Quality | T17.1 → T17.3 | not started |

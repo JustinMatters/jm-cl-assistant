@@ -11,6 +11,14 @@ Orchestrator = orchestrator_module.Orchestrator
 OLLAMA_FAST_MODEL = router_module.OLLAMA_FAST_MODEL
 OLLAMA_MODEL = router_module.OLLAMA_MODEL
 
+_skip_no_api_key = pytest.mark.skipif(
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason=(
+        "OPENROUTER_API_KEY is not set — skipping tests that instantiate "
+        "Orchestrator (which requires the key at init time)"
+    ),
+)
+
 
 @pytest.mark.integration
 class TestEnvironment:
@@ -38,6 +46,7 @@ class TestEnvironment:
 
 
 @pytest.mark.integration
+@_skip_no_api_key
 class TestIntegrationOrchestrator:
     def test_simple_query_returns_non_empty_response(self, ollama_server):
         orch = Orchestrator()
@@ -65,6 +74,7 @@ class TestIntegrationOrchestrator:
 
 
 @pytest.mark.integration
+@_skip_no_api_key
 class TestIntegrationRouting:
     """Verify each routing tier reaches the correct Ollama model."""
 
@@ -81,7 +91,7 @@ class TestIntegrationRouting:
 
     def test_simple_query_uses_ollama_model(self, ollama_server):
         orch = Orchestrator()
-        orch.respond("What is the boiling point of water?", [])
+        orch.respond("Tell me about the solar system in one paragraph.", [])
         assert OLLAMA_MODEL.split("/")[-1] in orch.last_backend
 
     def test_fast_model_responds_directly(self, ollama_server):
