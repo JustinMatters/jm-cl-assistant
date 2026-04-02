@@ -222,18 +222,12 @@ resilience across every boundary.
 ## Phase 12 — Unused `sample_rate` Parameter
 
 ### T12.1 — Resolve `sample_rate` in WhisperTranscriber
-**Status:** not started
+**Status:** complete (superseded by T10.3)
 
-- `WhisperTranscriber.transcribe()` accepts `sample_rate` as a parameter
-  but never passes it to Whisper — the model internally resamples to 16 kHz
-- **Option A (remove):** Delete the parameter and update `handle_audio()` in
-  `app.py` to stop passing it; simpler but less future-proof
-- **Option B (resample):** Use `scipy.signal.resample` or `librosa.resample`
-  to explicitly resample the input to 16 kHz before passing to Whisper;
-  more robust if the browser provides audio at a non-standard rate
-- Pick one approach, implement it, and update tests
-- Cross-reference: overlaps with T10.3 — close whichever is addressed first
-  and mark the other as superseded
+- Option B (resample) was implemented in Phase 10 as part of T10.3.
+  `speech_input.py` uses `scipy.signal.resample` to resample audio to
+  16 kHz when the input sample rate differs from Whisper's expected rate.
+  No further action required.
 
 ---
 
@@ -626,7 +620,7 @@ tasks are solved reliably and cheaply without involving a large model.
 | 9 | Routing Tiers | T9.1 → T9.4 | complete |
 | 10 | Speech to Text Debugging | T10.1 → T10.7 | complete |
 | 11 | Error Handling | T11.1 → T11.6 | complete |
-| 12 | Unused `sample_rate` Parameter | T12.1 | not started |
+| 12 | Unused `sample_rate` Parameter | T12.1 | complete |
 | 13 | Documentation Refresh | T13.1 → T13.4 | not started |
 | 14 | Testing Gaps | T14.1 → T14.3 | not started |
 | 15 | Dependency Management | T15.1 | not started |
