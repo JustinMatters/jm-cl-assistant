@@ -41,7 +41,7 @@ class Orchestrator:
         self._claude = OpenRouterClient()
         self._fast_model = fast_model
         self._ollama_model = ollama_model
-        self.last_backend: str = ""
+        self.last_backend: str = "(awaiting first query)"
         self._backend_labels = {
             "trivial_ollama": f"Ollama: {fast_model.split('/')[-1]}",
             "simple_ollama": f"Ollama: {ollama_model.split('/')[-1]}",

@@ -48,6 +48,28 @@ class TestStripMarkdown:
     def test_plain_text_unchanged(self):
         assert strip_markdown("Hello world.") == "Hello world."
 
+    def test_unordered_bullet_dash_removed(self):
+        assert strip_markdown("- item one") == "item one"
+
+    def test_unordered_bullet_asterisk_removed(self):
+        assert strip_markdown("* item one") == "item one"
+
+    def test_unordered_bullet_plus_removed(self):
+        assert strip_markdown("+ item one") == "item one"
+
+    def test_ordered_list_marker_removed(self):
+        assert strip_markdown("1. first item") == "first item"
+
+    def test_ordered_list_multidigit_removed(self):
+        assert strip_markdown("12. twelfth item") == "twelfth item"
+
+    def test_multiline_list_markers_removed(self):
+        text = "- alpha\n- beta\n- gamma"
+        result = strip_markdown(text)
+        assert "alpha" in result
+        assert "beta" in result
+        assert "- " not in result
+
     def test_mixed_response(self):
         text = "**Summary:** the answer is _important_ and `x = 1`."
         result = strip_markdown(text)

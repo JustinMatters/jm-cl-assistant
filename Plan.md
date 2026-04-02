@@ -319,23 +319,15 @@ major-version upgrades silently entering the lockfile.
 ## Phase 17 — Minor Code Quality
 
 ### T17.1 — Initialise `last_backend` to a Sensible Default
-**Status:** not started
+**Status:** complete
 
 - `orchestrator.py:44` sets `last_backend = ""` — if `_prefix_last_reply()`
   is ever called before the first response, the chat bubble shows `**: text`
 - Initialise to `"(awaiting first query)"` or guard against empty string
   in `_prefix_last_reply()`
 
-### T17.2 — Robust Backend Label Extraction
-**Status:** not started
-
-- `orchestrator.py:46-49` uses `.split('/')[-1]` to extract a display name
-  from the model string — breaks for model names without a `/`
-- Replace with: `name.split('/')[-1] if '/' in name else name`
-- Add a test with a model name that contains no `/`
-
-### T17.3 — Strip List Markers in `strip_markdown()`
-**Status:** not started
+### T17.2 — Strip List Markers in `strip_markdown()`
+**Status:** complete
 
 - `helpers.py` `strip_markdown()` does not remove `- ` bullet prefixes
   or `1. ` numbered list prefixes — TTS reads "dash" and "one dot"
@@ -609,7 +601,7 @@ tasks are solved reliably and cheaply without involving a large model.
 | 14 | Testing Gaps | T14.1 | complete |
 | 15 | Dependency Management | T15.1 → T15.3 | complete |
 | 16 | Portability | T16.1 | complete |
-| 17 | Minor Code Quality | T17.1 → T17.3 | not started |
+| 17 | Minor Code Quality | T17.1 → T17.2 | complete |
 | 18 | Tools | T18.1 → T18.14 | not started |
 
 ---

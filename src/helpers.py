@@ -70,6 +70,10 @@ def strip_markdown(text: str) -> str:
     text = re.sub(r"^>\s?", "", text, flags=re.MULTILINE)
     # Horizontal rules
     text = re.sub(r"^[-*_]{3,}\s*$", "", text, flags=re.MULTILINE)
+    # Unordered list markers (- item, * item, + item)
+    text = re.sub(r"^[-*+]\s+", "", text, flags=re.MULTILINE)
+    # Ordered list markers (1. item, 12. item)
+    text = re.sub(r"^\d+\.\s+", "", text, flags=re.MULTILINE)
     return text.strip()
 
 
