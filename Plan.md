@@ -142,198 +142,62 @@ User Input (text | Whisper speech)
 ---
 
 ## Phase 11 — Error Handling
+*Archived to completed_work.md.*
 
-The app currently has no protection around any external call site. If Ollama
-is stopped, OpenRouter is unreachable, or a model file is missing, the user
-sees a raw Python traceback instead of a helpful message. This phase adds
-resilience across every boundary.
-
-### T11.1 — Ollama Call Protection
-**Status:** complete
-
-- Wrap `ollama.chat()` calls in `orchestrator.py` (`_ollama_respond`) and
-  `router.py` (`classify`) in try/except
-- Catch `ollama.ResponseError`, `httpx.ConnectError`, and generic `Exception`
-- In the orchestrator, return a user-friendly string
-  (e.g. "Ollama is not responding — please check it is running")
-- In the router, fall back to `trivial_ollama` on connection failure (already
-  the fallback for unparseable output) and log a warning
-- Add unit tests that mock `ollama.chat` raising each exception type
-
-### T11.2 — OpenRouter Call Protection
-**Status:** complete
-
-- Wrap the `self._client.chat.completions.create()` call in
-  `openrouter_client.py` in try/except
-- Catch `openai.APIConnectionError`, `openai.RateLimitError` (429),
-  `openai.APIStatusError` (5xx), and `openai.AuthenticationError`
-- Return a descriptive error string for each case (e.g. "OpenRouter rate
-  limit hit — please wait and try again")
-- Add a `timeout` parameter to the `create()` call (e.g. 60 seconds)
-- Add unit tests for each exception path
-
-### T11.3 — Friendly Missing API Key Error
-**Status:** complete
-
-- `OpenRouterClient.__init__` raises a bare `KeyError` when
-  `OPENROUTER_API_KEY` is not set
-- Catch `KeyError` and raise `ValueError` with the message
-  "Set the OPENROUTER_API_KEY environment variable before running the app"
-- Update the existing test in `test_openrouter_client.py` to assert on the
-  new `ValueError` and message text
-
-### T11.4 — Kokoro Model File Check
-**Status:** complete
-
-- At startup in `build_app()`, check whether `kokoro-v1.0.onnx` and
-  `voices-v1.0.bin` exist in the project root
-- If missing, log a clear warning ("Kokoro model files not found — TTS will
-  be unavailable") and allow the app to launch in text-only mode
-- Wrap the `Kokoro()` constructor call in `speech_output.py` in try/except
-  so a missing or corrupted model file produces a clear error rather than
-  a crash on first TTS request
-
-### T11.5 — Gradio Handler Crash Protection
-**Status:** complete
-
-- Wrap the bodies of `handle_text()` and `handle_audio()` in `app.py` in
-  try/except blocks
-- On exception, append an error message to the chat history as an assistant
-  bubble (e.g. "Error: Ollama is not responding") instead of letting the
-  handler crash
-- Ensure the UI remains usable after an error — the user should be able to
-  retry or switch modes without reloading the page
-- Add unit tests (see also T10.7) that verify error bubbles appear when
-  downstream components raise exceptions
-
-### T11.6 — Startup Health Checks
-**Status:** complete
-
-- Add an optional startup check in `build_app()` that verifies:
-  - Ollama is reachable (`ollama.list()` succeeds)
-  - Required Ollama models are pulled (both `qwen3:1.7b` and the 8B model)
-  - `OPENROUTER_API_KEY` is set (warn, don't block — local-only use is valid)
-  - Kokoro model files are present (see T11.4)
-- Log the result of each check at startup; do not block launch on failures
-  but warn clearly which features will be unavailable
+- T11.1 — Ollama Call Protection — complete
+- T11.2 — OpenRouter Call Protection — complete
+- T11.3 — Friendly Missing API Key Error — complete
+- T11.4 — Kokoro Model File Check — complete
+- T11.5 — Gradio Handler Crash Protection — complete
+- T11.6 — Startup Health Checks — complete
 
 ---
 
 ## Phase 12 — Unused `sample_rate` Parameter
+*Archived to completed_work.md.*
 
-### T12.1 — Resolve `sample_rate` in WhisperTranscriber
-**Status:** complete (superseded by T10.3)
-
-- Option B (resample) was implemented in Phase 10 as part of T10.3.
-  `speech_input.py` uses `scipy.signal.resample` to resample audio to
-  16 kHz when the input sample rate differs from Whisper's expected rate.
-  No further action required.
+- T12.1 — Resolve `sample_rate` in WhisperTranscriber — complete
 
 ---
 
 ## Phase 13 — Documentation Refresh
+*Archived to completed_work.md.*
 
-### T13.1 — Update CLAUDE.md Runtime Configuration Section
-**Status:** complete
-
-- Rewrote section to reflect argparse implementation; removed "pending"
-  language and T5.6 reference.
-
-### T13.2 — Update CLAUDE.md Architecture Description
-**Status:** complete
-
-- Updated router description to list all four tiers: trivial_ollama /
-  simple_ollama / complex_sonnet / complex_opus.
-
-### T13.3 — Update README Model Reference Table
-**Status:** complete
-
-- Updated `trivial_ollama` description to "facts a schoolchild would know";
-  arithmetic correctly attributed to `simple_ollama`.
-
-### T13.4 — Fix Historical Filenames in Plan.md
-**Status:** complete
-
-- Updated T2.3 and T3.2 entries to reference the renamed
-  `*openrouter_client*` files with a note about the rename.
+- T13.1 — Update CLAUDE.md Runtime Configuration Section — complete
+- T13.2 — Update CLAUDE.md Architecture Description — complete
+- T13.3 — Update README Model Reference Table — complete
+- T13.4 — Fix Historical Filenames in Plan.md — complete
 
 ---
 
 ## Phase 14 — Testing Gaps
+*Archived to completed_work.md.*
 
-Two of the three originally planned tickets were superseded before this phase
-started: handler logic was extracted and tested in T10.7 (`process_audio`) and
-T11.5 (`process_text`); error-path tests were added across all modules in
-Phase 11.
-
-### T14.1 — Integration Test API Key Guard
-**Status:** complete
-
-- `TestIntegrationOrchestrator` and `TestIntegrationRouting` in
-  `test_integration.py` don't verify `OPENROUTER_API_KEY` is set before
-  running; `Orchestrator.__init__` instantiates `OpenRouterClient`, which
-  raises `ValueError` if the key is missing
-- Add a `pytest.mark.skipif` check at the class level so a missing key
-  produces a clean skip rather than a confusing `ValueError`
+- T14.1 — Integration Test API Key Guard — complete
 
 ---
 
 ## Phase 15 — Dependency Management
+*Archived to completed_work.md.*
 
-Supply chain hardening strategy: `uv.lock` already contains SHA256 hashes for
-every package (853 entries). The missing piece is enforcing those hashes in CI
-via `--frozen`, and bounding versions in `pyproject.toml` to prevent unexpected
-major-version upgrades silently entering the lockfile.
-
-### T15.1 — Pin Major Version Bounds in `pyproject.toml`
-**Status:** complete
-
-- `~=` applied to `gradio`, `openai`, `ollama`, `kokoro-onnx`
-- `openai-whisper` pinned with `==20250625` (date-based version, `~=` not valid)
-- `numpy`, `scipy`, `sounddevice`, `torch` kept on `>=` (platform-sensitive)
-
-### T15.2 — Enforce Lockfile Hash Verification in CI
-**Status:** complete
-
-- Both `uv sync` calls in `.github/workflows/ci.yml` updated to `--frozen`;
-  CI now verifies committed lockfile SHA256 hashes on every build
-
-### T15.3 — Verify `uv.lock` Is Committed and Not Gitignored
-**Status:** complete
-
-- Confirmed: `git ls-files uv.lock` returns the file; not in `.gitignore`
+- T15.1 — Pin Major Version Bounds in `pyproject.toml` — complete
+- T15.2 — Enforce Lockfile Hash Verification in CI — complete
+- T15.3 — Verify `uv.lock` Is Committed and Not Gitignored — complete
 
 ---
 
 ## Phase 16 — Portability
+*Archived to completed_work.md.*
 
-### T16.1 — Remove Absolute Path from `.claude/settings.json`
-**Status:** complete
-
-- Removed `cd C:/Users/justi/Documents/GitHub/jm-cl-assistant &&` from the
-  pre-commit hook command; Claude Code hooks always run from the project root
-  (the directory containing `.claude/`) so the `cd` was unnecessary.
+- T16.1 — Remove Absolute Path from `.claude/settings.json` — complete
 
 ---
 
 ## Phase 17 — Minor Code Quality
+*Archived to completed_work.md.*
 
-### T17.1 — Initialise `last_backend` to a Sensible Default
-**Status:** complete
-
-- `orchestrator.py:44` sets `last_backend = ""` — if `_prefix_last_reply()`
-  is ever called before the first response, the chat bubble shows `**: text`
-- Initialise to `"(awaiting first query)"` or guard against empty string
-  in `_prefix_last_reply()`
-
-### T17.2 — Strip List Markers in `strip_markdown()`
-**Status:** complete
-
-- `helpers.py` `strip_markdown()` does not remove `- ` bullet prefixes
-  or `1. ` numbered list prefixes — TTS reads "dash" and "one dot"
-- Add regex passes for unordered markers (`^[-*+]\s+`, multiline) and
-  ordered markers (`^\d+\.\s+`, multiline)
-- Add tests for bullet and numbered list input in `test_helpers.py`
+- T17.1 — Initialise `last_backend` to a Sensible Default — complete
+- T17.2 — Strip List Markers in `strip_markdown()` — complete
 
 ---
 
