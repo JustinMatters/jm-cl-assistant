@@ -5,8 +5,8 @@ Hybrid AI chatbot that routes queries between a local Ollama model and Claude
 (Sonnet/Opus) via the Anthropic API. Gradio UI with Whisper STT and Kokoro TTS.
 
 ## Architecture
-- `src/router.py` — OllamaRouter: classifies query complexity (simple /
-  complex_sonnet / complex_opus)
+- `src/router.py` — OllamaRouter: classifies query complexity (trivial_ollama /
+  simple_ollama / complex_sonnet / complex_opus)
 - `src/openrouter_client.py` — OpenRouterClient: wraps OpenAI-compatible REST API,
   targets claude-sonnet-4-6 and claude-opus-4-6 via OpenRouter
 - `src/orchestrator.py` — Orchestrator: composes router + clients, manages
@@ -29,11 +29,11 @@ Hybrid AI chatbot that routes queries between a local Ollama model and Claude
 ## Environment Variables
 - `OPENROUTER_API_KEY` — required for Claude API calls via OpenRouter
 
-## Runtime Configuration (argparse — see T4.6)
-The following are currently hardcoded defaults pending argparse implementation:
-- Whisper model: `medium` (hardcoded in `src/speech_input.py`)
-- Ollama model: `sam860/deepseek-r1-0528-qwen3:8b` (hardcoded in `src/router.py`)
-These will become `--whisper-model` and `--ollama-model` CLI arguments in T5.6.
+## Runtime Configuration
+The app accepts the following CLI arguments (implemented in `src/app.py`):
+- `--whisper-model` — Whisper model size (default: `medium`)
+- `--ollama-model` — Ollama model for routing and simple queries
+  (default: `sam860/deepseek-r1-0528-qwen3:8b`)
 
 ## Claude Skills to Use
 - Do NOT use the `claude-api` skill for `src/openrouter_client.py` — OpenRouter

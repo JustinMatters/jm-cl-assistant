@@ -47,7 +47,7 @@ User Input (text | Whisper speech)
 
 - T2.1 — Router Unit Tests (`tests/test_router.py`) — complete
 - T2.2 — Orchestrator Unit Tests (`tests/test_orchestrator.py`) — complete
-- T2.3 — Claude Client Unit Tests (`tests/test_claude_client.py`) — complete
+- T2.3 — Claude Client Unit Tests (`tests/test_openrouter_client.py`) — complete (renamed from `test_claude_client.py`)
 - T2.4 — Speech Module Unit Tests (`tests/test_speech.py`) — complete
 - T2.5 — Integration Smoke Test (`tests/test_integration.py`) — complete
 
@@ -57,7 +57,7 @@ User Input (text | Whisper speech)
 *Archived to completed_work.md.*
 
 - T3.1 — Ollama Router (`src/router.py`) — complete
-- T3.2 — Claude API Client (`src/claude_client.py`) — complete
+- T3.2 — Claude API Client (`src/openrouter_client.py`) — complete (renamed from `claude_client.py`)
 - T3.3 — Chat Orchestrator (`src/orchestrator.py`) — complete
 
 ---
@@ -234,37 +234,28 @@ resilience across every boundary.
 ## Phase 13 — Documentation Refresh
 
 ### T13.1 — Update CLAUDE.md Runtime Configuration Section
-**Status:** not started
+**Status:** complete
 
-- Lines 32-36 say "currently hardcoded defaults pending argparse
-  implementation" and reference T5.6 — argparse is already implemented in
-  `app.py` with `--whisper-model` and `--ollama-model` flags
-- Rewrite the section to reflect current reality; remove the "pending"
-  language
+- Rewrote section to reflect argparse implementation; removed "pending"
+  language and T5.6 reference.
 
 ### T13.2 — Update CLAUDE.md Architecture Description
-**Status:** not started
+**Status:** complete
 
-- Line 8 describes the router as classifying "simple / complex_sonnet /
-  complex_opus" — the router now has four tiers including `trivial_ollama`
-- Update to list all four tiers
+- Updated router description to list all four tiers: trivial_ollama /
+  simple_ollama / complex_sonnet / complex_opus.
 
 ### T13.3 — Update README Model Reference Table
-**Status:** not started
+**Status:** complete
 
-- Line 102 lists `trivial_ollama` as handling "greetings, arithmetic,
-  one-word answers" — arithmetic was moved to `simple_ollama` and
-  `trivial_ollama` now handles "facts a schoolchild would know"
-- Update the table to match the current routing prompt
+- Updated `trivial_ollama` description to "facts a schoolchild would know";
+  arithmetic correctly attributed to `simple_ollama`.
 
 ### T13.4 — Fix Historical Filenames in Plan.md
-**Status:** not started
+**Status:** complete
 
-- T2.3 (line 121) references `tests/test_claude_client.py` and T3.2
-  (line 155) references `src/claude_client.py` — both were renamed to
-  `*openrouter_client*` during implementation
-- Add a note to each completed ticket indicating the rename, or update
-  the descriptions to use the current filenames
+- Updated T2.3 and T3.2 entries to reference the renamed
+  `*openrouter_client*` files with a note about the rename.
 
 ---
 
@@ -621,7 +612,7 @@ tasks are solved reliably and cheaply without involving a large model.
 | 10 | Speech to Text Debugging | T10.1 → T10.7 | complete |
 | 11 | Error Handling | T11.1 → T11.6 | complete |
 | 12 | Unused `sample_rate` Parameter | T12.1 | complete |
-| 13 | Documentation Refresh | T13.1 → T13.4 | not started |
+| 13 | Documentation Refresh | T13.1 → T13.4 | complete |
 | 14 | Testing Gaps | T14.1 → T14.3 | not started |
 | 15 | Dependency Management | T15.1 | not started |
 | 16 | Portability | T16.1 | not started |

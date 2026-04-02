@@ -99,7 +99,7 @@ ollama run sam860/deepseek-r1-0528-qwen3:8b
 
 | Model | Routing tier | VRAM (approx) |
 |-------|-------------|---------------|
-| `qwen3:1.7b` | `trivial_ollama` — greetings, arithmetic, one-word answers | ~2 GB |
+| `qwen3:1.7b` | `trivial_ollama` — greetings, facts a schoolchild would know | ~2 GB |
 | `sam860/deepseek-r1-0528-qwen3:8b` | `simple_ollama` — factual lookups, routing classifier | ~5 GB |
 | Claude Sonnet 4.6 (OpenRouter) | `complex_sonnet` — analysis, essays, reasoning | cloud |
 | Claude Opus 4.6 (OpenRouter) | `complex_opus` — research, expert proofs | cloud |
