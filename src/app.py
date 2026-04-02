@@ -315,6 +315,25 @@ def build_app(
         # is not interrupted.
 
         def handle_audio(audio_data, history, out_mode, show, voice):
+            """Handle a microphone recording submitted via the audio input.
+
+            Ignores ``None`` audio (re-fired after recorder reset). On
+            success delegates to ``process_audio`` and resets the recorder.
+            On failure appends an error bubble and still resets the recorder
+            so the UI remains usable.
+
+            Args:
+                audio_data: ``(sample_rate, audio_array)`` tuple from
+                  ``gr.Audio``, or ``None`` when the recorder is reset.
+                history: Current conversation history.
+                out_mode: Output mode — ``"text"`` or ``"text and speech"``.
+                show: Whether to show ``<think>`` tags in the response.
+                voice: Kokoro voice ID for TTS synthesis.
+
+            Returns:
+                A tuple of ``(chatbot, history_state, audio_output,
+                audio_input)`` suitable for Gradio's ``outputs`` list.
+            """
             if audio_data is None:
                 # Re-fired by our own reset — leave everything unchanged.
                 return (
