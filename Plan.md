@@ -308,14 +308,11 @@ major-version upgrades silently entering the lockfile.
 ## Phase 16 — Portability
 
 ### T16.1 — Remove Absolute Path from `.claude/settings.json`
-**Status:** not started
+**Status:** complete
 
-- The pre-commit hook hardcodes
-  `cd C:/Users/justi/Documents/GitHub/jm-cl-assistant`
-- If Claude Code hooks support `$PWD` or a relative path, use that instead
-- If not, document in CLAUDE.md that the path must be updated per-machine,
-  or remove the `cd` and rely on the hook running from the repo root
-  (verify this is the case)
+- Removed `cd C:/Users/justi/Documents/GitHub/jm-cl-assistant &&` from the
+  pre-commit hook command; Claude Code hooks always run from the project root
+  (the directory containing `.claude/`) so the `cd` was unnecessary.
 
 ---
 
@@ -611,7 +608,7 @@ tasks are solved reliably and cheaply without involving a large model.
 | 13 | Documentation Refresh | T13.1 → T13.4 | complete |
 | 14 | Testing Gaps | T14.1 | complete |
 | 15 | Dependency Management | T15.1 → T15.3 | complete |
-| 16 | Portability | T16.1 | not started |
+| 16 | Portability | T16.1 | complete |
 | 17 | Minor Code Quality | T17.1 → T17.3 | not started |
 | 18 | Tools | T18.1 → T18.14 | not started |
 

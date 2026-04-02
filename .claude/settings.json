@@ -7,7 +7,7 @@
           {
             "type": "command",
             "if": "Bash(git commit*)",
-            "command": "cd C:/Users/justi/Documents/GitHub/jm-cl-assistant && uv run ruff check . && uv run ruff format --check .",
+            "command": "uv run ruff check . && uv run ruff format --check .",
             "timeout": 60,
             "statusMessage": "Running ruff lint and format checks..."
           }
