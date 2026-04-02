@@ -81,3 +81,6 @@ voices-v1.0.bin
 # Claude Code — skills excluded (licensing) and local overrides
 .claude/skills/
 .claude/settings.local.json
+
+# Research notes (local only)
+research/
