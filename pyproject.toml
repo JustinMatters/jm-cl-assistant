@@ -4,12 +4,12 @@ version = "0.1.0"
 description = "Hybrid AI chatbot routing queries between a local Ollama model and Claude via the Anthropic API"
 requires-python = ">=3.13"
 dependencies = [
-    "gradio>=6.10.0",
-    "kokoro-onnx>=0.5.0",
+    "gradio~=6.10",
+    "kokoro-onnx~=0.5",
     "numpy>=2.4.3",
-    "ollama>=0.6.1",
-    "openai>=2.30.0",
-    "openai-whisper>=20250625",
+    "ollama~=0.6",
+    "openai~=2.30",
+    "openai-whisper==20250625",
     "scipy>=1.17.1",
     "sounddevice>=0.5.5",
     "torch>=2.11.0",

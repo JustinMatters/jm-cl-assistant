@@ -23,7 +23,7 @@ jobs:
         run: uv python install
 
       - name: Install dev dependencies
-        run: uv sync --only-dev
+        run: uv sync --only-dev --frozen
 
       - name: Ruff lint
         run: uv run ruff check .
@@ -44,7 +44,7 @@ jobs:
         run: uv python install
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Run tests
         run: uv run pytest -m "not integration" || [ $? -eq 5 ]

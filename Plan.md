@@ -280,17 +280,28 @@ Phase 11.
 
 ## Phase 15 — Dependency Management
 
-### T15.1 — Pin Major Version Bounds in `pyproject.toml`
-**Status:** not started
+Supply chain hardening strategy: `uv.lock` already contains SHA256 hashes for
+every package (853 entries). The missing piece is enforcing those hashes in CI
+via `--frozen`, and bounding versions in `pyproject.toml` to prevent unexpected
+major-version upgrades silently entering the lockfile.
 
-- All dependencies use `>=` with no upper bounds — a breaking major version
-  update (e.g. Gradio 7.0, OpenAI SDK 3.0) could silently break the app
-- Switch to compatible-release constraints (`~=`) for key libraries:
-  `gradio~=6.10`, `openai~=2.30`, `kokoro-onnx~=0.5`, `ollama~=0.6`,
-  `openai-whisper~=20250625`
-- Keep `numpy` and `sounddevice` on `>=` — these have stable APIs
-- Run `uv sync` and `uv run pytest` after the change to verify nothing
-  breaks
+### T15.1 — Pin Major Version Bounds in `pyproject.toml`
+**Status:** complete
+
+- `~=` applied to `gradio`, `openai`, `ollama`, `kokoro-onnx`
+- `openai-whisper` pinned with `==20250625` (date-based version, `~=` not valid)
+- `numpy`, `scipy`, `sounddevice`, `torch` kept on `>=` (platform-sensitive)
+
+### T15.2 — Enforce Lockfile Hash Verification in CI
+**Status:** complete
+
+- Both `uv sync` calls in `.github/workflows/ci.yml` updated to `--frozen`;
+  CI now verifies committed lockfile SHA256 hashes on every build
+
+### T15.3 — Verify `uv.lock` Is Committed and Not Gitignored
+**Status:** complete
+
+- Confirmed: `git ls-files uv.lock` returns the file; not in `.gitignore`
 
 ---
 
@@ -599,7 +610,7 @@ tasks are solved reliably and cheaply without involving a large model.
 | 12 | Unused `sample_rate` Parameter | T12.1 | complete |
 | 13 | Documentation Refresh | T13.1 → T13.4 | complete |
 | 14 | Testing Gaps | T14.1 | complete |
-| 15 | Dependency Management | T15.1 | not started |
+| 15 | Dependency Management | T15.1 → T15.3 | complete |
 | 16 | Portability | T16.1 | not started |
 | 17 | Minor Code Quality | T17.1 → T17.3 | not started |
 | 18 | Tools | T18.1 → T18.14 | not started |
