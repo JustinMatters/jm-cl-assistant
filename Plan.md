@@ -440,9 +440,22 @@ The OpenAI-compatible API (and Claude natively) supports a `tools` parameter
 where you define function schemas. The model decides when to call a tool,
 generates structured arguments, and the client executes the function and feeds
 the result back. This is more flexible — the model can chain tools, use tools
-mid-conversation, and handle ambiguous queries — but it only works for the
-Claude tiers (Sonnet/Opus via OpenRouter), not the local Ollama models which
-have limited or no tool-use support.
+mid-conversation, and handle ambiguous queries. Ollama also supports native
+tool calling for Qwen3 variants (our current model is Qwen3-based), so Approach
+B is technically available across all tiers — though the local model's
+tool-calling reliability may be lower than Claude's.
+
+**Security note for tool results:** Any tool that fetches external content
+(web search, URL reader) must sanitise results before feeding them back to
+the model. Indirect prompt injection — malicious instructions embedded in
+web content that the model then acts on — is the most dangerous tool-use
+attack vector. Validate and truncate all tool outputs before including them
+in the context.
+
+**Token cost note:** Tool definitions consume input tokens. A single
+verbose MCP server can consume ~11,700 tokens of definitions. The tool
+registry should support selective loading (only the tools needed for a given
+query) and descriptions should be kept concise.
 
 **Recommended hybrid approach:**
 - Use **Approach A** (router-dispatched) for tools that map to obvious,
@@ -451,7 +464,8 @@ have limited or no tool-use support.
 - Use **Approach B** (LLM tool use) for tools that benefit from model
   judgement: web search (deciding what to search for), location-aware
   follow-ups, or chaining multiple tools. Register tool schemas with the
-  OpenRouterClient and handle the tool-call response loop.
+  OpenRouterClient and handle the tool-call response loop. Qwen3 tool
+  calling can be trialled for Ollama tiers once the Claude path is working.
 - Start with Approach A for all tools (simpler), then migrate selected tools
   to Approach B once the basic infrastructure works.
 
@@ -486,7 +500,7 @@ computation. Phase 19 replaces that with dedicated tools so deterministic
 tasks are solved reliably and cheaply without involving a large model.
 
 ### T19.1 — Calculator Tool
-**Status:** not started
+**Status:** complete
 
 - Implement a `calculate(expression: str) -> str` tool in `src/tools/calculator.py`
   that evaluates arithmetic expressions safely (no `eval` on arbitrary code)
@@ -524,6 +538,9 @@ tasks are solved reliably and cheaply without involving a large model.
   `duckduckgo-search` library as the backend
 - Return a concise summary of the top results (title + snippet + URL)
   formatted as plain text suitable for passing back to an LLM or reading aloud
+- **Security:** Sanitise all result text (titles, snippets, URLs) before
+  injecting into the LLM context — indirect prompt injection via search
+  results is a known attack vector; truncate to a safe character limit
 - Add a `web_search` classification tier to the router system prompt for
   queries that require current information (news, recent events, live data)
 - Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: web search"`
@@ -579,8 +596,13 @@ tasks are solved reliably and cheaply without involving a large model.
   - Stores tool definitions as OpenAI-compatible function schemas (name,
     description, parameters JSON schema)
   - Maps tool names to callable Python functions
-  - Provides a `schemas()` method returning the list for the API `tools` param
+  - Provides a `schemas(names=None)` method returning the list for the API
+    `tools` param — supports selective loading so only tools relevant to
+    the current query are registered (avoids unnecessary token cost)
   - Provides an `execute(name, arguments) -> str` method to dispatch a call
+- Include `strict: true` in all Claude tool schema definitions to enforce
+  exact schema compliance and improve production reliability
+- Keep tool descriptions concise — each definition consumes input tokens
 - Update `OpenRouterClient.ask()` to optionally accept a `tools` list and
   handle the tool-call response loop: send tools → receive tool_use stop
   reason → execute tool → send tool result → receive final response
@@ -656,6 +678,10 @@ tasks are solved reliably and cheaply without involving a large model.
 - Implement `summarise_url(url: str) -> str` in `src/tools/url_reader.py`
 - Fetch the page content, extract readable text (use `trafilatura` or
   `beautifulsoup4` + `requests`), and truncate to a reasonable length
+- **Security:** Page content from untrusted URLs is a high-risk indirect
+  injection surface — strip HTML, limit extracted length, and pass through
+  a summarisation prompt that explicitly scopes the model's task before
+  including in context
 - Pass the extracted text to the current Claude tier with a "summarise this
   page" system prompt, returning the summary
 - Best suited for Approach B — the model detects a URL in the user's message
@@ -689,6 +715,31 @@ tasks are solved reliably and cheaply without involving a large model.
   much memory do I have" are unambiguous
 - Add unit tests in `tests/test_sysinfo.py`
 
+### T19.16 — Code Execution Sandbox
+**Status:** not started
+
+- Implement a `run_code(code: str, language: str = "python") -> str` tool
+  in `src/tools/code_exec.py` that safely executes user-supplied code and
+  returns the output
+- **Two implementation options to evaluate:**
+  - **`asteval`** (simpler): AST-based evaluator for arithmetic and simple
+    Python expressions. Safe by default — no file I/O, no imports, no
+    network. Good for data manipulation, sorting, string formatting, and
+    computations beyond the calculator's scope.
+  - **`restrictedpython`** (more powerful): Compiles and runs arbitrary
+    Python in a restricted namespace with configurable builtins and guards.
+    Supports loops, comprehensions, user-defined functions, and controlled
+    imports — useful if the assistant needs to run non-trivial user-provided
+    scripts. Requires careful configuration of the allowed namespace and
+    guard functions to prevent sandbox escapes.
+- Start with `asteval` for initial implementation; leave `restrictedpython`
+  as a documented upgrade path for when broader execution power is needed
+- Capture stdout/stderr and return as a formatted string; enforce a
+  configurable timeout to prevent runaway code
+- Approach B candidate — the model can detect when a user asks to "run",
+  "execute", or "compute" something that exceeds arithmetic
+- Add unit tests in `tests/test_code_exec.py`
+
 ---
 
 ## Implementation Order Summary
@@ -714,7 +765,7 @@ tasks are solved reliably and cheaply without involving a large model.
 | 16 | Portability | T16.1 | complete |
 | 17 | Minor Code Quality | T17.1 → T17.2 | complete |
 | 18 | RAG Memory | T18.1 → T18.6 | complete |
-| 19 | Tools | T19.1 → T19.15 | not started |
+| 19 | Tools | T19.1 → T19.16 | not started |
 
 ---
 
