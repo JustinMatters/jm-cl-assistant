@@ -15,8 +15,25 @@ class MemoryStore:
     """Stores and retrieves conversation memory using ChromaDB.
 
     Embeddings are generated locally via nomic-embed-text through Ollama.
-    Instruction-aware prefixes (search_document:/search_query:) are applied
-    at embed time so stored text remains clean and readable.
+    Instruction-aware prefixes (``search_document:`` / ``search_query:``)
+    are applied at embed time so stored text remains clean and readable.
+
+    Args:
+        persist_dir: Directory path for ChromaDB's local persistence.
+        ollama_url: Base URL of the local Ollama server.
+        collection: ChromaDB collection name for this store.
+        k: Maximum number of results to retrieve per search query.
+        similarity_threshold: Cosine distance cutoff — records with
+          distance >= this value are excluded from results (0.0 = identical,
+          1.0 = completely dissimilar).
+
+    Attributes:
+        _k: Maximum results per search.
+        _threshold: Similarity distance cutoff.
+        _collection: The underlying ChromaDB collection.
+
+    Raises:
+        RuntimeError: If nomic-embed-text is not pulled in Ollama.
     """
 
     def __init__(
@@ -58,7 +75,21 @@ class MemoryStore:
         url: str = "",
         title: str = "",
     ) -> str:
-        """Store a record. Returns the generated document ID."""
+        """Embed and store a text record with associated metadata.
+
+        Args:
+            text: The content to store and embed (e.g. a conversation turn).
+            source: Origin label for the record, e.g. ``"conversation"``
+              or ``"web_search"``.
+            session_id: UUID string identifying the current app session.
+            keywords: Optional comma-separated keywords for the record.
+            url: Optional source URL associated with the record.
+            title: Optional human-readable title for the record.
+
+        Returns:
+            The generated document ID string, composed of source, timestamp,
+            and a short random hex suffix.
+        """
         timestamp = datetime.now(UTC).isoformat()
         doc_id = f"{source}_{timestamp}_{uuid4().hex[:8]}"
         embedding = self._embed([f"search_document: {text}"])[0]
@@ -85,10 +116,24 @@ class MemoryStore:
         k: int | None = None,
         source_filter: str | None = None,
     ) -> list[dict]:
-        """Return up to k records with cosine distance < threshold.
+        """Return stored records semantically similar to the query.
 
-        Each dict has keys: id, text, source, session_id, timestamp,
-        keywords, url, title, distance.
+        Embeds the query and retrieves the nearest neighbours from
+        ChromaDB, then filters out any with cosine distance >= the
+        configured threshold.
+
+        Args:
+            query: The search query text to embed and match against.
+            k: Maximum number of results to return. Defaults to the
+              instance ``_k`` value when ``None``.
+            source_filter: If provided, only records with a matching
+              ``source`` metadata field are considered.
+
+        Returns:
+            A list of dicts, each with keys: ``id``, ``text``,
+            ``source``, ``session_id``, ``timestamp``, ``keywords``,
+            ``url``, ``title``, ``distance``. Returns an empty list if
+            the store is empty or no records pass the threshold.
         """
         count = self._collection.count()
         if count == 0:
@@ -124,10 +169,20 @@ class MemoryStore:
         return records
 
     def get_context_block(self, query: str) -> str:
-        """Return a formatted prompt-ready string of retrieved memories.
+        """Return a formatted prompt-ready block of retrieved memories.
 
-        Returns an empty string if nothing passes the similarity threshold,
-        so callers can safely check truthiness before injecting into prompt.
+        Searches for records relevant to the query and formats them as a
+        ``[PAST MEMORIES] … [END MEMORIES]`` block suitable for injection
+        as a system message. Callers can check truthiness before injecting
+        — an empty string is returned when nothing passes the threshold.
+
+        Args:
+            query: The current user query used to retrieve relevant memories.
+
+        Returns:
+            A multi-line string delimited by ``[PAST MEMORIES]`` and
+            ``[END MEMORIES]``, or an empty string if no relevant records
+            were found.
         """
         records = self.search(query)
         if not records:
