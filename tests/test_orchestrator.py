@@ -350,3 +350,82 @@ class TestMathsDispatch:
         called_expr = mock_calc.call_args.args[0]
         assert "calculate" not in called_expr.lower()
         assert "6 * 7" in called_expr
+
+
+class TestConvertDispatch:
+    """convert classification calls the converter tool, not an LLM."""
+
+    def _make_orch(self, mocker):
+        mocker.patch(
+            "src.orchestrator.OllamaRouter.classify",
+            return_value="convert",
+        )
+        return Orchestrator(session_id="test-session", memory_enabled=False)
+
+    def test_convert_query_answered_by_converter(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch(
+            "src.orchestrator.convert",
+            return_value="5 mi = 8.047 km",
+        )
+        response, _ = orch.respond("convert 5 miles to km", [])
+        assert response == "5 mi = 8.047 km"
+
+    def test_ollama_not_called_for_convert(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch("src.orchestrator.convert", return_value="5 mi = 8.047 km")
+        mock_ollama = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond"
+        )
+        orch.respond("convert 5 miles to km", [])
+        mock_ollama.assert_not_called()
+
+    def test_claude_not_called_for_convert(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch("src.orchestrator.convert", return_value="5 mi = 8.047 km")
+        mock_claude = mocker.patch("src.orchestrator.OpenRouterClient.ask")
+        orch.respond("convert 5 miles to km", [])
+        mock_claude.assert_not_called()
+
+    def test_backend_label_is_tool_converter(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch("src.orchestrator.convert", return_value="5 mi = 8.047 km")
+        orch.respond("convert 5 miles to km", [])
+        assert orch.last_backend == "Tool: converter"
+
+    def test_unparseable_query_falls_back_to_fast_ollama(self, mocker):
+        orch = self._make_orch(mocker)
+        mock_ollama = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="fallback answer",
+        )
+        response, _ = orch.respond("convert things", [])
+        mock_ollama.assert_called_once()
+        assert response == "fallback answer"
+
+    def test_converter_error_falls_back_to_fast_ollama(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch(
+            "src.orchestrator.convert",
+            return_value="Error: incompatible units",
+        )
+        mock_ollama = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="fallback",
+        )
+        response, _ = orch.respond("convert 5 kg to meters", [])
+        mock_ollama.assert_called_once()
+        assert response == "fallback"
+
+    def test_converter_error_updates_backend_label(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch(
+            "src.orchestrator.convert",
+            return_value="Error: incompatible units",
+        )
+        mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="fallback",
+        )
+        orch.respond("convert 5 kg to meters", [])
+        assert orch.last_backend != "Tool: converter"

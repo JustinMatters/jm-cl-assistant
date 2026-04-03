@@ -20,6 +20,7 @@ _VALID = frozenset(
         "complex_sonnet",
         "complex_opus",
         "maths",
+        "convert",
     }
 )
 _FALLBACK: Literal[
@@ -28,6 +29,7 @@ _FALLBACK: Literal[
     "complex_sonnet",
     "complex_opus",
     "maths",
+    "convert",
 ] = "trivial_ollama"
 
 _SYSTEM_PROMPT = (
@@ -41,9 +43,12 @@ _SYSTEM_PROMPT = (
     "'who wrote Romeo and Juliet', 'how do you say hello in Spanish')\n"
     "  maths          — arithmetic, algebra, and any query whose answer is a "
     "number: expressions to evaluate, percentages, powers, roots, "
-    "trigonometry, unit conversions involving numbers "
-    "(e.g. 'what is 2+2', 'calculate sqrt(144)', '15% of 200', "
-    "'2**10', 'convert 5 miles to km')\n"
+    "trigonometry "
+    "(e.g. 'what is 2+2', 'calculate sqrt(144)', '15% of 200', '2**10')\n"
+    "  convert        — unit conversions: a number followed by a unit being "
+    "converted to another unit "
+    "(e.g. 'convert 5 miles to km', '100 degF in celsius', "
+    "'how many kg is 10 pounds', '60 mph to m/s')\n"
     "  simple_ollama  — questions requiring a paragraph or more to answer: "
     "how-to instructions, explanations of concepts, short summaries, "
     "defining acronyms or terms "
@@ -81,6 +86,7 @@ class OllamaRouter:
         "complex_sonnet",
         "complex_opus",
         "maths",
+        "convert",
     ]:
         """Classify a user query by complexity.
 
@@ -94,7 +100,8 @@ class OllamaRouter:
 
         Returns:
             One of ``"trivial_ollama"``, ``"simple_ollama"``,
-            ``"complex_sonnet"``, ``"complex_opus"``, or ``"maths"``.
+            ``"complex_sonnet"``, ``"complex_opus"``, ``"maths"``,
+            or ``"convert"``.
         """
         try:
             response = ollama.chat(

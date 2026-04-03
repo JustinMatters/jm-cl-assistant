@@ -43,6 +43,7 @@ VALID_CLASSIFICATIONS = {
     "complex_sonnet",
     "complex_opus",
     "maths",
+    "convert",
 }
 
 MATHS_QUERIES = [
@@ -50,6 +51,13 @@ MATHS_QUERIES = [
     "calculate sqrt(144)",
     "15% of 200",
     "2 ** 10",
+]
+
+CONVERT_QUERIES = [
+    "convert 5 miles to km",
+    "100 degF in celsius",
+    "how many kg is 10 pounds",
+    "60 mph to m/s",
 ]
 
 
@@ -165,6 +173,30 @@ class TestMathsClassification:
     def test_multiple_maths_queries_all_return_valid(self, mocker, query):
         mock_client = mocker.patch("src.router.ollama.chat")
         mock_client.return_value = {"message": {"content": "maths"}}
+        router = OllamaRouter()
+        result = router.classify(query)
+        assert result in VALID_CLASSIFICATIONS
+
+
+class TestConvertClassification:
+    def test_convert_query_classified_as_convert(self, mocker):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "convert"}}
+        router = OllamaRouter()
+        result = router.classify("convert 5 miles to km")
+        assert result == "convert"
+
+    def test_convert_is_a_valid_classification(self, mocker):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "convert"}}
+        router = OllamaRouter()
+        result = router.classify(CONVERT_QUERIES[0])
+        assert result in VALID_CLASSIFICATIONS
+
+    @pytest.mark.parametrize("query", CONVERT_QUERIES)
+    def test_multiple_convert_queries_all_return_valid(self, mocker, query):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "convert"}}
         router = OllamaRouter()
         result = router.classify(query)
         assert result in VALID_CLASSIFICATIONS
