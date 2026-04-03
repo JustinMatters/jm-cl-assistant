@@ -201,7 +201,251 @@ User Input (text | Whisper speech)
 
 ---
 
-## Phase 18 — Tools
+## Phase 18 — RAG Memory
+
+### Overview
+
+This phase adds persistent, retrievable memory to the assistant using
+Retrieval-Augmented Generation (RAG). Past conversation turns and externally
+sourced content (web search results, Wikipedia summaries, URLs — added in
+Phase 19) are embedded, stored in a local vector database, and retrieved at
+query time. The top-k most semantically relevant past records are injected
+into the system prompt so the assistant can reference prior context across
+sessions.
+
+### Architecture
+
+```
+src/memory/
+├── __init__.py
+└── store.py        ← MemoryStore: the single public interface
+chroma_db/          ← ChromaDB persistence directory (gitignored)
+```
+
+**MemoryStore** wraps ChromaDB and exposes a small, stable API:
+- `add(text, source, metadata)` — store any record with full metadata
+- `search(query, k, filter)` → list of matching records
+- `get_context_block(query)` → formatted string ready to inject into a prompt
+
+This interface is intentionally source-agnostic. Conversation turns, tool
+outputs (web search, Wikipedia, URL reader), and research documents all flow
+through the same `add()` method with different `source` values. Phase 19
+tools call `MemoryStore.add()` directly — no orchestrator involvement needed
+for writes from tools.
+
+**Metadata schema** (every record carries all fields; optional ones default
+to empty string):
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `source` | str | yes | `"conversation"`, `"web_search"`, `"wikipedia"`, `"url"`, `"research"` |
+| `session_id` | str | yes | UUID generated at app startup |
+| `timestamp` | str | yes | ISO 8601 datetime |
+| `keywords` | str | no | Comma-separated keyword tags |
+| `url` | str | no | Origin URL for web-sourced records |
+| `title` | str | no | Document or page title |
+
+ChromaDB metadata values must be scalar strings or numbers — lists are stored
+as comma-separated strings and deserialized on read.
+
+**Embedding**: `nomic-embed-text` via Ollama's `/api/embeddings` endpoint
+(768 dimensions). Uses ChromaDB's built-in `OllamaEmbeddingFunction` — no
+separate embedding step in application code. Prepend inputs with
+`search_document:` on writes and `search_query:` on reads to activate
+nomic-embed-text's instruction-aware retrieval improvement.
+
+**Similarity threshold**: only inject retrieved records with cosine distance
+< 0.7. When the store is sparse (new install, first few sessions), this
+prevents irrelevant context from degrading responses.
+
+**Context budget**: inject up to k=5 records by default, occupying ~20–30%
+of the context window. Each record contributes roughly 512 tokens; the
+majority of the context window is preserved for the current conversation.
+
+### T18.1 — Dependencies and Embedding Model
+**Status:** not started
+
+- Add `chromadb` to project dependencies: `uv add chromadb`
+- Run `uv sync` to install the new dependency and refreeze the lockfile
+- Commit both `pyproject.toml` and `uv.lock` together in a single commit so
+  the lockfile always reflects the declared dependencies
+- Pull the embedding model: `ollama pull nomic-embed-text`
+- Verify the model is available via `ollama list` and that
+  `http://localhost:11434/api/embeddings` responds to a test embed call
+- Add `chroma_db/` to `.gitignore` (the persistence directory must not be
+  committed — it is local to each installation)
+- No application code changes in this ticket; this is environment setup only
+
+### T18.2 — MemoryStore Class
+**Status:** not started
+
+- Create `src/memory/__init__.py` (empty, makes `memory` a package)
+- Create `src/memory/store.py` implementing a `MemoryStore` class:
+
+  ```python
+  class MemoryStore:
+      def __init__(self, persist_dir: str = "./chroma_db",
+                   ollama_url: str = "http://localhost:11434",
+                   collection: str = "assistant_memory",
+                   k: int = 5,
+                   similarity_threshold: float = 0.7): ...
+
+      def add(
+          self,
+          text: str,
+          source: str,
+          session_id: str,
+          keywords: str = "",
+          url: str = "",
+          title: str = "",
+      ) -> str:
+          """Store a record. Returns the generated document ID."""
+
+      def search(
+          self,
+          query: str,
+          k: int | None = None,
+          source_filter: str | None = None,
+      ) -> list[dict]:
+          """Return up to k records with distance < threshold.
+          Each dict has keys: id, text, source, session_id,
+          timestamp, keywords, url, title, distance."""
+
+      def get_context_block(self, query: str) -> str:
+          """Return a formatted prompt-ready string of retrieved memories,
+          or empty string if nothing passes the similarity threshold."""
+  ```
+
+- Document IDs are generated as `f"{source}_{timestamp}_{uuid4().hex[:8]}"` —
+  human-readable and collision-resistant
+- `get_context_block()` formats retrieved records as:
+  ```
+  [PAST MEMORIES]
+  - [2026-01-15 | conversation] User asked about Whisper model sizes...
+  - [2026-01-20 | web_search | title: "Open-Meteo API"] Forecast API returns...
+  [END MEMORIES]
+  ```
+  Include `title` and `url` fields when present. Omit empty fields silently.
+- Add unit tests in `tests/test_memory_store.py` using a temporary ChromaDB
+  directory (use `tmp_path` pytest fixture). Mock the Ollama embedding call
+  so tests do not require a running Ollama instance. Test: add → search →
+  get_context_block round-trip, similarity threshold filtering, source
+  filtering, empty-store behaviour (returns empty string, not an error).
+
+### T18.3 — Session ID Generation
+**Status:** not started
+
+- Add session ID generation to `src/app.py`: generate a UUID once at app
+  startup (not per message) and pass it to the `Orchestrator`
+- Update `Orchestrator.__init__` to accept and store a `session_id: str`
+  parameter; default to `uuid4().hex` if not provided so existing tests
+  that construct `Orchestrator` directly continue to work
+- The session ID is used as metadata on every memory write; it lets future
+  queries filter to a specific session if needed
+- Update `tests/test_orchestrator.py` to pass an explicit `session_id` in
+  test fixtures
+
+### T18.4 — Conversation Recording
+**Status:** not started
+
+- Instantiate `MemoryStore` in `Orchestrator.__init__`; add a
+  `memory_enabled: bool = True` constructor parameter so tests can disable it
+- After each complete exchange (user message + assistant response), call
+  `memory.add()` with the combined text:
+  ```python
+  text = f"User: {user_message}\nAssistant: {response}"
+  memory.add(text, source="conversation", session_id=self.session_id)
+  ```
+- Prepend `search_document:` to the stored text before embedding, as
+  recommended for nomic-embed-text instruction-aware retrieval
+- Writing to memory is fire-and-forget from the user's perspective — do not
+  block the response on memory writes. If the ChromaDB write fails (e.g.
+  Ollama is not running), log a warning and continue; memory failures must
+  never prevent a response from being returned
+- Add integration test (marked `@pytest.mark.integration`) that writes a
+  turn and reads it back using a live ChromaDB instance
+- Update unit tests to pass `memory_enabled=False` where memory is not
+  relevant to what is being tested
+
+### T18.5 — Context Injection
+**Status:** not started
+
+- At the start of each call to `Orchestrator.respond()`, before constructing
+  the message list, call `memory.get_context_block(user_message)`
+- If the returned string is non-empty, prepend it to the system prompt:
+  ```python
+  system = f"{base_system}\n\n{context_block}" if context_block else base_system
+  ```
+- The context block is only injected on messages where the user has said
+  something (not on empty or whitespace-only messages)
+- Prepend `search_query:` to the query text before searching, as recommended
+  for nomic-embed-text instruction-aware retrieval
+- Do not inject the current turn's own exchange (it hasn't been stored yet
+  at inject time — this is by design; the current turn goes into memory
+  after the response is returned, per T18.4)
+- Context injection failures (Ollama down, ChromaDB unavailable) must be
+  handled gracefully: log a warning and proceed with no injected context
+- Add tests verifying: injection when memories exist and pass threshold,
+  no injection when store is empty, no injection when all results exceed the
+  similarity threshold distance cutoff
+
+### T18.6 — Tool Write Interface
+**Status:** not started
+
+- Expose `MemoryStore` as an optional dependency for tool code in Phase 19.
+  The orchestrator holds the single `MemoryStore` instance; pass it into
+  tool calls that should be able to commit records.
+- Add a `store` parameter to the tool dispatch mechanism (established in
+  T19.8 Tool Registry) so tool functions can optionally accept a
+  `store: MemoryStore | None = None` argument. Tools that do not need memory
+  access simply ignore the parameter.
+- Document the expected call pattern for Phase 19 tools that write to memory:
+  ```python
+  # Example: web search tool writing its result to memory
+  if store:
+      store.add(
+          text=result_text,
+          source="web_search",
+          session_id=session_id,
+          keywords=", ".join(top_keywords),
+          url=result_url,
+          title=result_title,
+      )
+  ```
+- This ticket is primarily architectural — ensure the interface is in place
+  and documented before Phase 19 tools are built. No new application
+  behaviour is visible to the user.
+- Add a unit test verifying that a mock tool receives the `store` argument
+  and can call `add()` on it
+
+### T18.7 — Memory Toggle and Status Indicator
+**Status:** not started
+
+- Add a `gr.Checkbox` (label: `"Memory"`, value: `True`) to the Gradio UI,
+  placed alongside the existing mode controls so it is visually grouped with
+  other session settings
+- Wire the checkbox to a `gr.State` variable `memory_enabled` that is passed
+  into each `Orchestrator.respond()` call
+- `Orchestrator.respond()` already accepts `memory_enabled` as a constructor
+  parameter (T18.4); update the app to pass the live UI state value on each
+  call instead so the user can toggle mid-session without restarting
+- When `memory_enabled` is `False`: skip both context injection (T18.5) and
+  conversation recording (T18.4) for that turn — the store is neither read
+  from nor written to
+- Add a read-only `gr.Textbox` or `gr.Markdown` status label next to the
+  checkbox showing the current record count (e.g. `"Memory: on · 42 records"`
+  or `"Memory: off"`); update it after each turn via the existing Gradio
+  output chain
+- The record count is retrieved cheaply via `collection.count()` on the
+  ChromaDB collection — no embedding call required
+- When memory is toggled off, the status label shows `"Memory: off"` so the
+  user has a clear visual confirmation that the store is not being used
+- Add tests verifying that passing `memory_enabled=False` suppresses both
+  read and write calls to `MemoryStore`
+
+---
+
+## Phase 19 — Tools
 
 ### Implementation Strategy
 
@@ -261,10 +505,10 @@ To keep the boundary clear:
 
 The router currently routes arithmetic and maths calculations to `simple_ollama`
 (the 8B model) because LLMs can produce incorrect results for numerical
-computation. Phase 18 replaces that with dedicated tools so deterministic
+computation. Phase 19 replaces that with dedicated tools so deterministic
 tasks are solved reliably and cheaply without involving a large model.
 
-### T18.1 — Calculator Tool
+### T19.1 — Calculator Tool
 **Status:** not started
 
 - Implement a `calculate(expression: str) -> str` tool in `src/tools/calculator.py`
@@ -276,7 +520,7 @@ tasks are solved reliably and cheaply without involving a large model.
   expression is invalid
 - Add unit tests in `tests/test_calculator.py`
 
-### T18.2 — Integrate Calculator into Orchestrator
+### T19.2 — Integrate Calculator into Orchestrator
 **Status:** not started
 
 - Add a `maths` classification tier to the router system prompt so arithmetic
@@ -286,7 +530,7 @@ tasks are solved reliably and cheaply without involving a large model.
 - Update `_backend_labels` to include a `"maths"` entry (e.g. `"Tool: calculator"`)
 - Update tests in `test_orchestrator.py` and `test_router.py`
 
-### T18.3 — Unit Conversion Tool (stretch)
+### T19.3 — Unit Conversion Tool (stretch)
 **Status:** not started
 
 - Implement a `convert(value, from_unit, to_unit) -> str` tool in
@@ -295,7 +539,7 @@ tasks are solved reliably and cheaply without involving a large model.
 - Integrate into orchestrator similarly to the calculator
 - Add unit tests in `tests/test_converter.py`
 
-### T18.4 — Web Search Tool
+### T19.4 — Web Search Tool
 **Status:** not started
 
 - Implement a `web_search(query: str) -> str` tool in `src/tools/web_search.py`
@@ -308,7 +552,7 @@ tasks are solved reliably and cheaply without involving a large model.
 - Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: web search"`
 - Add unit tests in `tests/test_web_search.py` (mock HTTP calls)
 
-### T18.5 — Location Tool (IP Lookup)
+### T19.5 — Location Tool (IP Lookup)
 **Status:** not started
 
 - Implement a `get_location() -> dict` tool in `src/tools/location.py`
@@ -320,7 +564,7 @@ tasks are solved reliably and cheaply without involving a large model.
   location string (e.g. `"London, England, GB"`) for use by other tools
 - Add unit tests in `tests/test_location.py` (mock HTTP calls)
 
-### T18.6 — Date and Time Tool
+### T19.6 — Date and Time Tool
 **Status:** not started
 
 - Implement a `get_datetime(timezone: str | None = None) -> str` tool in
@@ -328,14 +572,14 @@ tasks are solved reliably and cheaply without involving a large model.
 - Return the current date and time formatted as a readable string
   (e.g. `"Sunday 29 March 2026, 14:35 BST"`)
 - If no timezone is supplied, attempt to infer it from the location tool
-  (T18.5); fall back to UTC with a note
+  (T19.5); fall back to UTC with a note
 - Use the `zoneinfo` stdlib module (Python 3.9+) — no extra dependency needed
 - Add a `datetime` classification tier to the router system prompt for
   queries about the current time or date
 - Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: datetime"`
 - Add unit tests in `tests/test_datetime_tool.py`
 
-### T18.7 — Weather Forecast Tool
+### T19.7 — Weather Forecast Tool
 **Status:** not started
 
 - Implement a `get_weather(location: str, days: int = 7) -> str` tool in
@@ -344,14 +588,14 @@ tasks are solved reliably and cheaply without involving a large model.
   Open-Meteo geocoding endpoint to resolve location names to coordinates
 - Return a day-by-day forecast summary for up to 7 days: date, condition,
   high/low temperature (°C), precipitation probability
-- If `location` is `"auto"`, call the location tool (T18.5) to resolve the
+- If `location` is `"auto"`, call the location tool (T19.5) to resolve the
   user's current location automatically
 - Format output as plain text suitable for reading aloud via TTS
 - Add a `weather` classification tier to the router system prompt
 - Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: weather"`
 - Add unit tests in `tests/test_weather.py` (mock HTTP calls)
 
-### T18.8 — Tool Registry and LLM Function Calling Infrastructure
+### T19.8 — Tool Registry and LLM Function Calling Infrastructure
 **Status:** not started
 
 - Create `src/tools/registry.py` containing a `ToolRegistry` class that:
@@ -366,7 +610,7 @@ tasks are solved reliably and cheaply without involving a large model.
 - This is the foundation for Approach B tools (LLM-chosen tool use)
 - Add unit tests in `tests/test_registry.py`
 
-### T18.9 — Currency Conversion Tool
+### T19.9 — Currency Conversion Tool
 **Status:** not started
 
 - Implement `convert_currency(amount, from_code, to_code) -> str` in
@@ -379,7 +623,7 @@ tasks are solved reliably and cheaply without involving a large model.
   50 euros to dollars" are unambiguous
 - Add unit tests in `tests/test_currency.py` (mock HTTP calls)
 
-### T18.10 — Dictionary / Definition Tool
+### T19.10 — Dictionary / Definition Tool
 **Status:** not started
 
 - Implement `define(word: str) -> str` in `src/tools/dictionary.py`
@@ -391,7 +635,7 @@ tasks are solved reliably and cheaply without involving a large model.
   ephemeral mean" are clear triggers
 - Add unit tests in `tests/test_dictionary.py` (mock HTTP calls)
 
-### T18.11 — Wikipedia Summary Tool
+### T19.11 — Wikipedia Summary Tool
 **Status:** not started
 
 - Implement `wiki_summary(topic: str) -> str` in `src/tools/wikipedia.py`
@@ -403,7 +647,7 @@ tasks are solved reliably and cheaply without involving a large model.
   can rephrase the search term for better results
 - Add unit tests in `tests/test_wikipedia.py` (mock HTTP calls)
 
-### T18.12 — URL Content Summariser
+### T19.12 — URL Content Summariser
 **Status:** not started
 
 - Implement `summarise_url(url: str) -> str` in `src/tools/url_reader.py`
@@ -415,7 +659,7 @@ tasks are solved reliably and cheaply without involving a large model.
   and decides to fetch and summarise it
 - Add unit tests in `tests/test_url_reader.py` (mock HTTP calls)
 
-### T18.13 — Reminder / Timer Tool
+### T19.13 — Reminder / Timer Tool
 **Status:** not started
 
 - Implement a session-scoped reminder system in `src/tools/reminders.py`
@@ -428,7 +672,7 @@ tasks are solved reliably and cheaply without involving a large model.
   "remind me in 10 minutes to check the oven"
 - Add unit tests in `tests/test_reminders.py`
 
-### T18.14 — System Info Tool
+### T19.14 — System Info Tool
 **Status:** not started
 
 - Implement `system_info() -> str` in `src/tools/sysinfo.py`
@@ -466,7 +710,8 @@ tasks are solved reliably and cheaply without involving a large model.
 | 15 | Dependency Management | T15.1 → T15.3 | complete |
 | 16 | Portability | T16.1 | complete |
 | 17 | Minor Code Quality | T17.1 → T17.2 | complete |
-| 18 | Tools | T18.1 → T18.14 | not started |
+| 18 | RAG Memory | T18.1 → T18.7 | not started |
+| 19 | Tools | T19.1 → T19.14 | not started |
 
 ---
 
