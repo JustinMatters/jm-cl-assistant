@@ -236,3 +236,38 @@ class TestContextInjection:
         )
         _, updated = orch.respond("hello", [])
         assert all(m["role"] != "system" for m in updated)
+
+
+class TestMemoryEnabledPerCall:
+    """memory_enabled=False at call time suppresses reads and writes."""
+
+    def _make_orch(self, mocker):
+        mocker.patch(
+            "src.orchestrator.OllamaRouter.classify",
+            return_value="trivial_ollama",
+        )
+        mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="reply",
+        )
+        orch = Orchestrator(session_id="test-session", memory_enabled=False)
+        mock_memory = MagicMock()
+        mock_memory.get_context_block.return_value = _MEMORY_BLOCK
+        orch._memory = mock_memory
+        return orch
+
+    def test_disabled_skips_context_read(self, mocker):
+        orch = self._make_orch(mocker)
+        orch.respond("hello", [], memory_enabled=False)
+        orch._memory.get_context_block.assert_not_called()
+
+    def test_disabled_skips_memory_write(self, mocker):
+        orch = self._make_orch(mocker)
+        orch.respond("hello", [], memory_enabled=False)
+        orch._memory.add.assert_not_called()
+
+    def test_enabled_reads_and_writes(self, mocker):
+        orch = self._make_orch(mocker)
+        orch.respond("hello", [], memory_enabled=True)
+        orch._memory.get_context_block.assert_called_once()
+        orch._memory.add.assert_called_once()

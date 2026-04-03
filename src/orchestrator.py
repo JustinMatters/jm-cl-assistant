@@ -73,7 +73,12 @@ class Orchestrator:
             "complex_opus": f"OpenRouter: {OPUS_DISPLAY_NAME}",
         }
 
-    def respond(self, query: str, history: list) -> tuple[str, list]:
+    def respond(
+        self,
+        query: str,
+        history: list,
+        memory_enabled: bool = True,
+    ) -> tuple[str, list]:
         """Generate a response and update the conversation history.
 
         Classifies the query, dispatches to the appropriate backend, and
@@ -83,6 +88,9 @@ class Orchestrator:
             query: The user's input text.
             history: The current conversation history as a list of
               ``{"role": ..., "content": ...}`` dicts.
+            memory_enabled: When False, the memory store is neither read
+              from (no context injection) nor written to (no recording)
+              for this call. Allows the user to toggle memory mid-session.
 
         Returns:
             A tuple of ``(response_text, updated_history)`` where
@@ -92,7 +100,7 @@ class Orchestrator:
         # augmented is a local copy — it is never written back to history,
         # so the injected context does not accumulate across turns.
         context_block = ""
-        if self._memory is not None and query.strip():
+        if self._memory is not None and memory_enabled and query.strip():
             try:
                 context_block = self._memory.get_context_block(query)
             except Exception as exc:
@@ -118,7 +126,7 @@ class Orchestrator:
             {"role": "user", "content": query},
             {"role": "assistant", "content": response},
         ]
-        if self._memory is not None:
+        if self._memory is not None and memory_enabled:
             try:
                 self._memory.add(
                     f"User: {query}\nAssistant: {response}",
