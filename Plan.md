@@ -486,8 +486,9 @@ runtime. The two systems are completely separate:
 
 To keep the boundary clear:
 - All runtime tool code lives under `src/tools/` (never in `.claude/`)
-- Tool schemas for LLM function calling (Approach B) are defined in a
-  `src/tools/registry.py` module, not in any Claude Code config file
+- Tool schemas and metadata are defined via `ToolDefinition` in
+  `src/tools/registry.py`; the registry drives both the router prompt and
+  LLM function calling (Approach B)
 - The word "skill" is reserved for Claude Code; the app calls its own
   capabilities "tools"
 - Tests for runtime tools live in `tests/test_*.py` alongside existing tests
@@ -529,92 +530,129 @@ tasks are solved reliably and cheaply without involving a large model.
 - Cover common categories: length, mass, temperature, volume, speed, time
 - Integrate into orchestrator similarly to the calculator
 - Add unit tests in `tests/test_converter.py`
+- **Note:** T19.1–T19.3 use direct hardcoded integration; T19.5 migrates
+  them to the registry so future tools self-register instead
 
-### T19.4 — Web Search Tool
+---
+
+### T19.4 — Tool Definition Protocol
 **Status:** not started
 
-- Implement a `web_search(query: str) -> str` tool in `src/tools/web_search.py`
-- Use the DuckDuckGo Instant Answer API (no API key required) or the
-  `duckduckgo-search` library as the backend
-- Return a concise summary of the top results (title + snippet + URL)
-  formatted as plain text suitable for passing back to an LLM or reading aloud
-- **Security:** Sanitise all result text (titles, snippets, URLs) before
-  injecting into the LLM context — indirect prompt injection via search
-  results is a known attack vector; truncate to a safe character limit
-- Add a `web_search` classification tier to the router system prompt for
-  queries that require current information (news, recent events, live data)
-- Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: web search"`
-- Add unit tests in `tests/test_web_search.py` (mock HTTP calls)
+Introduce the `ToolDefinition` dataclass in `src/tools/registry.py` that
+carries all metadata needed for routing, UI display, and LLM function calling:
 
-### T19.5 — Location Tool (IP Lookup)
+```python
+@dataclass
+class ToolDefinition:
+    name: str           # machine identifier, e.g. "calculator"
+    router_tier: str    # classification token, e.g. "maths"
+    label: str          # display label, e.g. "Tool: calculator"
+    description: str    # natural language description for router prompt
+    examples: list[str] # example queries, used in router prompt
+    default_enabled: bool
+    min_tier: str       # minimum router tier allowed to invoke this tool
+                        # one of: trivial_ollama / simple_ollama /
+                        #         complex_sonnet / complex_opus
+    approach: str       # "A" (router-dispatched) or "B" (LLM function call)
+    callable: Callable  # the Python function to invoke
+    # Approach B only — OpenAI-compatible JSON schema for LLM function calling:
+    parameters_schema: dict | None = None
+```
+
+- `min_tier` prevents small, unreliable models from being given access to
+  tools with side-effects or that require careful argument construction
+  (e.g. code execution should require at least `complex_sonnet`)
+- `approach` determines dispatch path in the orchestrator
+- `parameters_schema` is the JSON schema passed in the `tools` param for
+  Approach B calls; `None` for Approach A tools
+- Add unit tests in `tests/test_registry.py` verifying the dataclass fields
+  and that missing required fields raise `TypeError`
+
+### T19.5 — Tool Registry
 **Status:** not started
 
-- Implement a `get_location() -> dict` tool in `src/tools/location.py`
-  that resolves the user's approximate location from their public IP address
-- Use a free IP geolocation API (e.g. `ip-api.com` — no key required) returning
-  city, region, country, latitude, and longitude
-- Cache the result for the session to avoid repeated lookups
-- Expose a `get_location_str() -> str` helper that returns a human-readable
-  location string (e.g. `"London, England, GB"`) for use by other tools
-- Add unit tests in `tests/test_location.py` (mock HTTP calls)
+Implement `ToolRegistry` in `src/tools/registry.py`:
 
-### T19.6 — Date and Time Tool
-**Status:** not started
-
-- Implement a `get_datetime(timezone: str | None = None) -> str` tool in
-  `src/tools/datetime_tool.py`
-- Return the current date and time formatted as a readable string
-  (e.g. `"Sunday 29 March 2026, 14:35 BST"`)
-- If no timezone is supplied, attempt to infer it from the location tool
-  (T19.5); fall back to UTC with a note
-- Use the `zoneinfo` stdlib module (Python 3.9+) — no extra dependency needed
-- Add a `datetime` classification tier to the router system prompt for
-  queries about the current time or date
-- Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: datetime"`
-- Add unit tests in `tests/test_datetime_tool.py`
-
-### T19.7 — Weather Forecast Tool
-**Status:** not started
-
-- Implement a `get_weather(location: str, days: int = 7) -> str` tool in
-  `src/tools/weather.py`
-- Use the Open-Meteo API (free, no API key required) with geocoding via the
-  Open-Meteo geocoding endpoint to resolve location names to coordinates
-- Return a day-by-day forecast summary for up to 7 days: date, condition,
-  high/low temperature (°C), precipitation probability
-- If `location` is `"auto"`, call the location tool (T19.5) to resolve the
-  user's current location automatically
-- Format output as plain text suitable for reading aloud via TTS
-- Add a `weather` classification tier to the router system prompt
-- Integrate into `Orchestrator.respond()` with `_backend_label` `"Tool: weather"`
-- Add unit tests in `tests/test_weather.py` (mock HTTP calls)
-
-### T19.8 — Tool Registry and LLM Function Calling Infrastructure
-**Status:** not started
-
-- Create `src/tools/registry.py` containing a `ToolRegistry` class that:
-  - Stores tool definitions as OpenAI-compatible function schemas (name,
-    description, parameters JSON schema)
-  - Maps tool names to callable Python functions
-  - Provides a `schemas(names=None)` method returning the list for the API
-    `tools` param — supports selective loading so only tools relevant to
-    the current query are registered (avoids unnecessary token cost)
-  - Provides an `execute(name, arguments) -> str` method to dispatch a call
-- Include `strict: true` in all Claude tool schema definitions to enforce
-  exact schema compliance and improve production reliability
-- Keep tool descriptions concise — each definition consumes input tokens
-- Update `OpenRouterClient.ask()` to optionally accept a `tools` list and
-  handle the tool-call response loop: send tools → receive tool_use stop
-  reason → execute tool → send tool result → receive final response
-- This is the foundation for Approach B tools (LLM-chosen tool use)
+- Stores `ToolDefinition` instances; tools register via `registry.register(defn)`
+- `registry.enabled_tools(enabled_names: set[str]) -> list[ToolDefinition]`
+  returns only definitions whose `name` is in the enabled set
+- `registry.router_prompt_section(enabled_names) -> str` generates the tier
+  block for the router system prompt dynamically from enabled tools only —
+  each entry uses `description` and `examples` from the `ToolDefinition`
+- `registry.dispatch(tier, query, enabled_names) -> str | None` finds the
+  matching enabled tool by `router_tier` and calls its `callable`; returns
+  `None` if no match (orchestrator falls back to LLM)
+- `registry.schemas(enabled_names) -> list[dict]` returns OpenAI-compatible
+  tool schemas for all enabled Approach B tools (used in T19.8)
+- **Migrate T19.1 (calculator) and T19.3 (converter)** to self-register
+  `ToolDefinition` instances at module import time; remove hardcoded
+  `if classification == "maths"` / `"convert"` branches from
+  `Orchestrator.respond()` and replace with `registry.dispatch()`
+- Include `strict: true` in all Approach B parameter schemas
 - Add unit tests in `tests/test_registry.py`
+
+### T19.6 — Dynamic Router
+**Status:** not started
+
+- `OllamaRouter.classify()` accepts an `enabled_tools` set and builds its
+  `_VALID` set and system prompt dynamically from the registry:
+  - Base tiers (`trivial_ollama`, `simple_ollama`, `complex_sonnet`,
+    `complex_opus`) are always present
+  - Tool tiers are appended only for enabled tools, in the order they are
+    registered — disabling a tool removes its tier from the prompt entirely,
+    saving tokens and preventing phantom classifications
+- `Orchestrator` passes the current enabled set into `classify()` on every
+  call
+- Update `test_router.py` tests that previously hardcoded the tool tiers to
+  use the registry fixture instead
+- Add a test that disabling a tool removes its tier from the generated prompt
+
+### T19.7 — Tool Toggle UI
+**Status:** not started
+
+- On startup, query the registry for all registered tools and build a
+  per-tool `gr.Checkbox` in the Gradio UI, using `default_enabled` for the
+  initial value and `label` for the display name
+- Group tool checkboxes under a collapsible `gr.Accordion("Tools")` to keep
+  the UI tidy
+- Collect the enabled set as a `gr.State` and pass it into the orchestrator
+  on every submit/audio event alongside the existing `memory_enabled` flag
+- Add a `tools_status` `gr.Markdown` label (similar to the memory status
+  indicator) showing how many tools are active: `"Tools: 3 / 5 enabled"`
+- Update `handle_text()` and `handle_audio()` in `app.py` accordingly
+
+### T19.8 — Agentic Tool Use Loop (Approach B)
+**Status:** not started
+
+Currently all tools are called *instead of* the LLM (Approach A: router
+decides). Approach B lets the LLM itself decide to call a tool mid-response,
+receive the result, and continue reasoning before returning to the user.
+
+- Extend `OpenRouterClient.ask()` to accept an optional `tools` list
+  (OpenAI-compatible schemas from `registry.schemas()`):
+  1. Send query + tool schemas to Claude
+  2. If `stop_reason == "tool_use"`, extract tool name + arguments
+  3. Execute via `registry.dispatch()`, capture result
+  4. Append `tool_result` message and resend to the model
+  5. Repeat until `stop_reason != "tool_use"` (or a max-iteration guard)
+  6. Return the final text response
+- Extend the Ollama client path similarly — Qwen3 supports native tool
+  calling; the Ollama `/v1` endpoint accepts the same `tools` parameter
+- `Orchestrator.respond()` passes enabled Approach B tool schemas to
+  whichever client is handling the request; Approach A tools are still
+  router-dispatched as before
+- Add a `max_tool_iterations` guard (default: 5) to prevent runaway loops
+- Add unit tests covering: single tool call round-trip, multi-step chain,
+  max-iterations guard, tool error propagation
+
+---
 
 ### T19.9 — Memory Write Interface for Tools
 **Status:** not started
 
-- Extend the `ToolRegistry.execute()` dispatch mechanism (T19.8) with an
-  optional `store: MemoryStore | None = None` parameter so tools can commit
-  records without coupling to the Orchestrator directly
+- Extend the `ToolRegistry.dispatch()` mechanism (T19.5) with an optional
+  `store: MemoryStore | None = None` parameter so tools can commit records
+  without coupling to the Orchestrator directly
 - Tool functions that want to write to memory declare the parameter and
   receive the live store; tools that do not need it simply omit it
 - Document the expected call pattern for tools that write to memory:
@@ -631,24 +669,83 @@ tasks are solved reliably and cheaply without involving a large model.
       )
   ```
 - Update `Orchestrator.respond()` to pass `orchestrator._memory` (or `None`
-  when memory is disabled) into the tool registry dispatch call
+  when memory is disabled) into the registry dispatch call
 - Add a unit test verifying that a mock tool receives the `store` argument
   and can call `add()` on it
 
-### T19.10 — Currency Conversion Tool
+### T19.10 — Web Search Tool
+**Status:** not started
+
+- Implement a `web_search(query: str) -> str` tool in `src/tools/web_search.py`
+- Use the DuckDuckGo Instant Answer API (no API key required) or the
+  `duckduckgo-search` library as the backend
+- Return a concise summary of the top results (title + snippet + URL)
+  formatted as plain text suitable for passing back to an LLM or reading aloud
+- **Security:** Sanitise all result text (titles, snippets, URLs) before
+  injecting into the LLM context — indirect prompt injection via search
+  results is a known attack vector; truncate to a safe character limit
+- Register a `ToolDefinition` (Approach A, `default_enabled=True`,
+  `min_tier="trivial_ollama"`)
+- Add unit tests in `tests/test_web_search.py` (mock HTTP calls)
+
+### T19.11 — Location Tool (IP Lookup)
+**Status:** not started
+
+- Implement a `get_location() -> dict` tool in `src/tools/location.py`
+  that resolves the user's approximate location from their public IP address
+- Use a free IP geolocation API (e.g. `ip-api.com` — no key required) returning
+  city, region, country, latitude, and longitude
+- Cache the result for the session to avoid repeated lookups
+- Expose a `get_location_str() -> str` helper that returns a human-readable
+  location string (e.g. `"London, England, GB"`) for use by other tools
+- Register a `ToolDefinition` (Approach A, `default_enabled=True`,
+  `min_tier="trivial_ollama"`)
+- Add unit tests in `tests/test_location.py` (mock HTTP calls)
+
+### T19.12 — Date and Time Tool
+**Status:** not started
+
+- Implement a `get_datetime(timezone: str | None = None) -> str` tool in
+  `src/tools/datetime_tool.py`
+- Return the current date and time formatted as a readable string
+  (e.g. `"Sunday 29 March 2026, 14:35 BST"`)
+- If no timezone is supplied, attempt to infer it from the location tool
+  (T19.11); fall back to UTC with a note
+- Use the `zoneinfo` stdlib module (Python 3.9+) — no extra dependency needed
+- Register a `ToolDefinition` (Approach A, `default_enabled=True`,
+  `min_tier="trivial_ollama"`)
+- Add unit tests in `tests/test_datetime_tool.py`
+
+### T19.13 — Weather Forecast Tool
+**Status:** not started
+
+- Implement a `get_weather(location: str, days: int = 7) -> str` tool in
+  `src/tools/weather.py`
+- Use the Open-Meteo API (free, no API key required) with geocoding via the
+  Open-Meteo geocoding endpoint to resolve location names to coordinates
+- Return a day-by-day forecast summary for up to 7 days: date, condition,
+  high/low temperature (°C), precipitation probability
+- If `location` is `"auto"`, call the location tool (T19.11) to resolve the
+  user's current location automatically
+- Format output as plain text suitable for reading aloud via TTS
+- Register a `ToolDefinition` (Approach A, `default_enabled=True`,
+  `min_tier="trivial_ollama"`)
+- Add unit tests in `tests/test_weather.py` (mock HTTP calls)
+
+### T19.14 — Currency Conversion Tool
 **Status:** not started
 
 - Implement `convert_currency(amount, from_code, to_code) -> str` in
   `src/tools/currency.py`
 - Use the free frankfurter.app API (no key required, ECB exchange rates,
   updated daily) or exchangerate.host as a fallback
-- Return a formatted string (e.g. "100.00 USD = 91.47 EUR (rate: 0.9147)")
+- Return a formatted string (e.g. `"100.00 USD = 91.47 EUR (rate: 0.9147)"`)
 - Cache exchange rates for the session to avoid repeated lookups
-- Good candidate for Approach A (router-dispatched) — queries like "convert
-  50 euros to dollars" are unambiguous
+- Register a `ToolDefinition` (Approach A, `default_enabled=True`,
+  `min_tier="trivial_ollama"`)
 - Add unit tests in `tests/test_currency.py` (mock HTTP calls)
 
-### T19.11 — Dictionary / Definition Tool
+### T19.15 — Dictionary / Definition Tool
 **Status:** not started
 
 - Implement `define(word: str) -> str` in `src/tools/dictionary.py`
@@ -656,23 +753,24 @@ tasks are solved reliably and cheaply without involving a large model.
 - Return: word, phonetic, part of speech, top 2-3 definitions, and an
   example sentence if available
 - Format as plain text suitable for TTS
-- Good candidate for Approach A — "define serendipity" or "what does
-  ephemeral mean" are clear triggers
+- Register a `ToolDefinition` (Approach A, `default_enabled=True`,
+  `min_tier="trivial_ollama"`)
 - Add unit tests in `tests/test_dictionary.py` (mock HTTP calls)
 
-### T19.12 — Wikipedia Summary Tool
+### T19.16 — Wikipedia Summary Tool
 **Status:** not started
 
 - Implement `wiki_summary(topic: str) -> str` in `src/tools/wikipedia.py`
 - Use the Wikipedia REST API (`en.wikipedia.org/api/rest_v1/page/summary/`)
   — no key required, returns a plain-text extract
 - Return the first 2-3 sentences of the article summary, plus the URL
-- Good candidate for Approach B (LLM tool use) — the model can decide when
-  a factual query would benefit from Wikipedia vs its own knowledge, and
-  can rephrase the search term for better results
+- Register a `ToolDefinition` (Approach B, `default_enabled=True`,
+  `min_tier="simple_ollama"`) — the model decides when a factual query
+  benefits from Wikipedia vs its own knowledge, and can rephrase the search
+  term for better results
 - Add unit tests in `tests/test_wikipedia.py` (mock HTTP calls)
 
-### T19.13 — URL Content Summariser
+### T19.17 — URL Content Summariser
 **Status:** not started
 
 - Implement `summarise_url(url: str) -> str` in `src/tools/url_reader.py`
@@ -684,11 +782,12 @@ tasks are solved reliably and cheaply without involving a large model.
   including in context
 - Pass the extracted text to the current Claude tier with a "summarise this
   page" system prompt, returning the summary
-- Best suited for Approach B — the model detects a URL in the user's message
-  and decides to fetch and summarise it
+- Register a `ToolDefinition` (Approach B, `default_enabled=True`,
+  `min_tier="complex_sonnet"`) — requires a capable model to safely
+  summarise and not be misled by injected content
 - Add unit tests in `tests/test_url_reader.py` (mock HTTP calls)
 
-### T19.14 — Reminder / Timer Tool
+### T19.18 — Reminder / Timer Tool
 **Status:** not started
 
 - Implement a session-scoped reminder system in `src/tools/reminders.py`
@@ -697,11 +796,12 @@ tasks are solved reliably and cheaply without involving a large model.
 - `list_reminders() -> str` — shows active reminders
 - Requires Gradio's `gr.Timer` or background thread to inject messages
   into the chat after a delay — investigate feasibility
-- Good candidate for Approach B — the model parses natural language like
+- Register a `ToolDefinition` (Approach B, `default_enabled=True`,
+  `min_tier="simple_ollama"`) — the model parses natural language like
   "remind me in 10 minutes to check the oven"
 - Add unit tests in `tests/test_reminders.py`
 
-### T19.15 — System Info Tool
+### T19.19 — System Info Tool
 **Status:** not started
 
 - Implement `system_info() -> str` in `src/tools/sysinfo.py`
@@ -711,11 +811,11 @@ tasks are solved reliably and cheaply without involving a large model.
 - Uses only stdlib (`platform`, `os`, `shutil`) plus optional `torch`
 - Useful for debugging and for the assistant to understand its own
   environment (e.g. "how much VRAM do I have free?")
-- Router-dispatched (Approach A) — queries like "system info" or "how
-  much memory do I have" are unambiguous
+- Register a `ToolDefinition` (Approach A, `default_enabled=True`,
+  `min_tier="trivial_ollama"`)
 - Add unit tests in `tests/test_sysinfo.py`
 
-### T19.16 — Code Execution Sandbox
+### T19.20 — Code Execution Sandbox
 **Status:** not started
 
 - Implement a `run_code(code: str, language: str = "python") -> str` tool
@@ -736,8 +836,9 @@ tasks are solved reliably and cheaply without involving a large model.
   as a documented upgrade path for when broader execution power is needed
 - Capture stdout/stderr and return as a formatted string; enforce a
   configurable timeout to prevent runaway code
-- Approach B candidate — the model can detect when a user asks to "run",
-  "execute", or "compute" something that exceeds arithmetic
+- Register a `ToolDefinition` (Approach B, `default_enabled=False`,
+  `min_tier="complex_sonnet"`) — off by default given execution risk;
+  requires a capable model to construct safe arguments
 - Add unit tests in `tests/test_code_exec.py`
 
 ---
@@ -765,7 +866,7 @@ tasks are solved reliably and cheaply without involving a large model.
 | 16 | Portability | T16.1 | complete |
 | 17 | Minor Code Quality | T17.1 → T17.2 | complete |
 | 18 | RAG Memory | T18.1 → T18.6 | complete |
-| 19 | Tools | T19.1 → T19.16 | not started |
+| 19 | Tools | T19.1 → T19.20 | in progress (T19.1–T19.3 complete) |
 
 ---
 
