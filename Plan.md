@@ -260,6 +260,13 @@ query) and descriptions should be kept concise.
 - Start with Approach A for all tools (simpler), then migrate selected tools
   to Approach B once the basic infrastructure works.
 
+**Registry construction — build fresh per turn:**
+At the start of each `Orchestrator.respond()` call, construct the active tool
+list by filtering the master registry against `(enabled_names_set,
+current_route_tier)`. Never mutate a shared registry object mid-conversation.
+This keeps the active catalogue immutable within a turn, avoids concurrency
+bugs, and is the pattern used by production systems (e.g. Codex).
+
 ### Tool definitions vs Claude Code skills — keeping them separate
 
 This project is built using Claude Code, which has its own skill/hook system
@@ -346,6 +353,10 @@ class ToolDefinition:
                         #         complex_sonnet / complex_opus
     approach: str       # "A" (router-dispatched) or "B" (LLM function call)
     callable: Callable  # the Python function to invoke
+    category: str = "general"   # UI grouping label, e.g. "maths", "web",
+                                 # "system" — used by T19.7 to group checkboxes
+    is_async: bool = False       # True if callable is a coroutine — dispatch
+                                 # must await it
     # Approach B only — OpenAI-compatible JSON schema for LLM function calling:
     parameters_schema: dict | None = None
 ```
@@ -355,7 +366,11 @@ class ToolDefinition:
   (e.g. code execution should require at least `complex_sonnet`)
 - `approach` determines dispatch path in the orchestrator
 - `parameters_schema` is the JSON schema passed in the `tools` param for
-  Approach B calls; `None` for Approach A tools
+  Approach B calls; `None` for Approach A tools. **Prefer auto-generation**
+  via a Pydantic `BaseModel` subclass and `model.model_json_schema()` over
+  hand-written JSON Schema — this avoids drift when signatures change
+- `category` drives grouping in the tool accordion (T19.7); keep values
+  short and consistent: `"maths"`, `"web"`, `"time"`, `"system"`, `"general"`
 - Add unit tests in `tests/test_registry.py` verifying the dataclass fields
   and that missing required fields raise `TypeError`
 
@@ -370,9 +385,11 @@ Implement `ToolRegistry` in `src/tools/registry.py`:
 - `registry.router_prompt_section(enabled_names) -> str` generates the tier
   block for the router system prompt dynamically from enabled tools only —
   each entry uses `description` and `examples` from the `ToolDefinition`
-- `registry.dispatch(tier, query, enabled_names) -> str | None` finds the
-  matching enabled tool by `router_tier` and calls its `callable`; returns
-  `None` if no match (orchestrator falls back to LLM)
+- `registry.dispatch(tier, query, enabled_names, current_route_tier) -> str | None`
+  finds the matching enabled tool by `router_tier`, **enforces `min_tier` at
+  execution time** (refuses to dispatch if `current_route_tier` ranks below
+  `tool.min_tier` — not just at UI/schema level), and calls `callable`;
+  returns `None` if no match or gated (orchestrator falls back to LLM)
 - `registry.schemas(enabled_names) -> list[dict]` returns OpenAI-compatible
   tool schemas for all enabled Approach B tools (used in T19.8)
 - **Migrate T19.1 (calculator) and T19.3 (converter)** to self-register
@@ -404,8 +421,12 @@ Implement `ToolRegistry` in `src/tools/registry.py`:
 - On startup, query the registry for all registered tools and build a
   per-tool `gr.Checkbox` in the Gradio UI, using `default_enabled` for the
   initial value and `label` for the display name
-- Group tool checkboxes under a collapsible `gr.Accordion("Tools")` to keep
-  the UI tidy
+- Group tool checkboxes under a collapsible `gr.Accordion("Tools")`, grouped
+  by `ToolDefinition.category` so related tools sit together
+- Tools whose `min_tier` exceeds the current model's route tier should be
+  rendered **greyed-out with an explanatory label** (e.g. "Requires Claude
+  Sonnet or higher") rather than hidden — hiding confuses users who later
+  upgrade the model; a visible-but-disabled state is the right UX
 - Collect the enabled set as a `gr.State` and pass it into the orchestrator
   on every submit/audio event alongside the existing `memory_enabled` flag
 - Add a `tools_status` `gr.Markdown` label (similar to the memory status
