@@ -88,16 +88,32 @@ class Orchestrator:
             A tuple of ``(response_text, updated_history)`` where
             ``updated_history`` includes the new user and assistant turns.
         """
+        # Retrieve relevant past memories and inject as a system message.
+        # augmented is a local copy — it is never written back to history,
+        # so the injected context does not accumulate across turns.
+        context_block = ""
+        if self._memory is not None and query.strip():
+            try:
+                context_block = self._memory.get_context_block(query)
+            except Exception as exc:
+                logging.warning("Memory context retrieval failed: %s", exc)
+        augmented = (
+            [{"role": "system", "content": context_block}] + list(history)
+            if context_block
+            else list(history)
+        )
         classification = self._router.classify(query)
         self.last_backend = self._backend_labels[classification]
         if classification == "trivial_ollama":
-            response = self._ollama_respond(query, history, self._fast_model)
+            response = self._ollama_respond(query, augmented, self._fast_model)
         elif classification == "simple_ollama":
-            response = self._ollama_respond(query, history, self._ollama_model)
+            response = self._ollama_respond(
+                query, augmented, self._ollama_model
+            )
         elif classification == "complex_sonnet":
-            response = self._claude.ask(query, "sonnet", history)
+            response = self._claude.ask(query, "sonnet", augmented)
         else:
-            response = self._claude.ask(query, "opus", history)
+            response = self._claude.ask(query, "opus", augmented)
         updated_history = list(history) + [
             {"role": "user", "content": query},
             {"role": "assistant", "content": response},

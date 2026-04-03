@@ -1,7 +1,13 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 orchestrator_module = pytest.importorskip("src.orchestrator")
 Orchestrator = orchestrator_module.Orchestrator
+
+_MEMORY_BLOCK = (
+    "[PAST MEMORIES]\n- [2026-01-01 | conversation] A fact.\n[END MEMORIES]"
+)
 
 
 class TestOrchestratorRespond:
@@ -175,3 +181,58 @@ class TestOrchestratorOllamaErrorHandling:
         assert len(history) == 2
         assert history[0]["role"] == "user"
         assert history[1]["role"] == "assistant"
+
+
+class TestContextInjection:
+    """Memory context is injected as a system message when relevant."""
+
+    def _make_orch_with_memory(self, mocker, context_block):
+        mocker.patch(
+            "src.orchestrator.OllamaRouter.classify",
+            return_value="trivial_ollama",
+        )
+        orch = Orchestrator(session_id="test-session", memory_enabled=False)
+        mock_memory = MagicMock()
+        mock_memory.get_context_block.return_value = context_block
+        orch._memory = mock_memory
+        return orch
+
+    def test_system_message_injected_when_memories_exist(self, mocker):
+        orch = self._make_orch_with_memory(mocker, _MEMORY_BLOCK)
+        mock_respond = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="reply",
+        )
+        orch.respond("hello", [])
+        passed_history = mock_respond.call_args.args[1]
+        assert passed_history[0]["role"] == "system"
+        assert "[PAST MEMORIES]" in passed_history[0]["content"]
+
+    def test_no_system_message_when_store_empty(self, mocker):
+        orch = self._make_orch_with_memory(mocker, "")
+        mock_respond = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="reply",
+        )
+        orch.respond("hello", [])
+        passed_history = mock_respond.call_args.args[1]
+        assert all(m["role"] != "system" for m in passed_history)
+
+    def test_no_system_message_when_query_is_whitespace(self, mocker):
+        orch = self._make_orch_with_memory(mocker, _MEMORY_BLOCK)
+        mock_respond = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="reply",
+        )
+        orch.respond("   ", [])
+        passed_history = mock_respond.call_args.args[1]
+        assert all(m["role"] != "system" for m in passed_history)
+
+    def test_injected_context_not_added_to_returned_history(self, mocker):
+        orch = self._make_orch_with_memory(mocker, _MEMORY_BLOCK)
+        mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="reply",
+        )
+        _, updated = orch.respond("hello", [])
+        assert all(m["role"] != "system" for m in updated)
