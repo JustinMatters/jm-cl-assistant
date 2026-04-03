@@ -512,7 +512,7 @@ tasks are solved reliably and cheaply without involving a large model.
 - Add unit tests in `tests/test_calculator.py`
 
 ### T19.2 — Integrate Calculator into Orchestrator
-**Status:** not started
+**Status:** complete
 
 - Add a `maths` classification tier to the router system prompt so arithmetic
   and calculation queries are routed to `maths` instead of `simple_ollama`

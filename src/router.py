@@ -14,10 +14,20 @@ OLLAMA_MODEL = "sam860/deepseek-r1-0528-qwen3:8b"
 OLLAMA_FAST_MODEL = "qwen3:1.7b"
 
 _VALID = frozenset(
-    {"trivial_ollama", "simple_ollama", "complex_sonnet", "complex_opus"}
+    {
+        "trivial_ollama",
+        "simple_ollama",
+        "complex_sonnet",
+        "complex_opus",
+        "maths",
+    }
 )
 _FALLBACK: Literal[
-    "trivial_ollama", "simple_ollama", "complex_sonnet", "complex_opus"
+    "trivial_ollama",
+    "simple_ollama",
+    "complex_sonnet",
+    "complex_opus",
+    "maths",
 ] = "trivial_ollama"
 
 _SYSTEM_PROMPT = (
@@ -26,13 +36,18 @@ _SYSTEM_PROMPT = (
     "  trivial_ollama — greetings, and any question with a short definitive "
     "answer that a schoolchild would know: capital cities, country facts, "
     "basic geography, historical dates, famous people, yes/no facts, "
-    "translations, unit conversions, colours, simple definitions "
+    "translations, colours, simple definitions "
     "(e.g. 'hi', 'what colour is the sky', 'what is the capital of France', "
     "'who wrote Romeo and Juliet', 'how do you say hello in Spanish')\n"
-    "  simple_ollama  — arithmetic and maths calculations, plus questions "
-    "requiring a paragraph or more to answer: how-to instructions, "
-    "explanations of concepts, short summaries, defining acronyms or terms "
-    "(e.g. 'what is 2+2', 'how does photosynthesis work', "
+    "  maths          — arithmetic, algebra, and any query whose answer is a "
+    "number: expressions to evaluate, percentages, powers, roots, "
+    "trigonometry, unit conversions involving numbers "
+    "(e.g. 'what is 2+2', 'calculate sqrt(144)', '15% of 200', "
+    "'2**10', 'convert 5 miles to km')\n"
+    "  simple_ollama  — questions requiring a paragraph or more to answer: "
+    "how-to instructions, explanations of concepts, short summaries, "
+    "defining acronyms or terms "
+    "(e.g. 'how does photosynthesis work', "
     "'explain what a REST API is', 'what does API stand for')\n"
     "  complex_sonnet — analysis, essays, multi-step reasoning, "
     "comparisons, structured writing; NOT short summaries or definitions\n"
@@ -61,7 +76,11 @@ class OllamaRouter:
     def classify(
         self, query: str
     ) -> Literal[
-        "trivial_ollama", "simple_ollama", "complex_sonnet", "complex_opus"
+        "trivial_ollama",
+        "simple_ollama",
+        "complex_sonnet",
+        "complex_opus",
+        "maths",
     ]:
         """Classify a user query by complexity.
 
@@ -75,7 +94,7 @@ class OllamaRouter:
 
         Returns:
             One of ``"trivial_ollama"``, ``"simple_ollama"``,
-            ``"complex_sonnet"``, or ``"complex_opus"``.
+            ``"complex_sonnet"``, ``"complex_opus"``, or ``"maths"``.
         """
         try:
             response = ollama.chat(

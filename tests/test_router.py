@@ -42,7 +42,15 @@ VALID_CLASSIFICATIONS = {
     "simple_ollama",
     "complex_sonnet",
     "complex_opus",
+    "maths",
 }
+
+MATHS_QUERIES = [
+    "what is 2 + 2?",
+    "calculate sqrt(144)",
+    "15% of 200",
+    "2 ** 10",
+]
 
 
 class TestOllamaRouterClassify:
@@ -133,6 +141,30 @@ class TestOllamaRouterClassify:
     def test_multiple_simple_queries_all_return_valid(self, mocker, query):
         mock_client = mocker.patch("src.router.ollama.chat")
         mock_client.return_value = {"message": {"content": "simple_ollama"}}
+        router = OllamaRouter()
+        result = router.classify(query)
+        assert result in VALID_CLASSIFICATIONS
+
+
+class TestMathsClassification:
+    def test_maths_query_classified_as_maths(self, mocker):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "maths"}}
+        router = OllamaRouter()
+        result = router.classify("what is 2 + 2?")
+        assert result == "maths"
+
+    def test_maths_is_a_valid_classification(self, mocker):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "maths"}}
+        router = OllamaRouter()
+        result = router.classify(MATHS_QUERIES[0])
+        assert result in VALID_CLASSIFICATIONS
+
+    @pytest.mark.parametrize("query", MATHS_QUERIES)
+    def test_multiple_maths_queries_all_return_valid(self, mocker, query):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "maths"}}
         router = OllamaRouter()
         result = router.classify(query)
         assert result in VALID_CLASSIFICATIONS

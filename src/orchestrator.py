@@ -5,6 +5,7 @@ Claude responses, and a direct Ollama client for trivial and simple queries.
 """
 
 import logging
+import re
 from uuid import uuid4
 
 import ollama
@@ -16,6 +17,14 @@ from src.openrouter_client import (
     OpenRouterClient,
 )
 from src.router import OLLAMA_FAST_MODEL, OLLAMA_MODEL, OllamaRouter
+from src.tools.calculator import calculate
+
+_MATHS_PREAMBLE = re.compile(
+    r"^\s*(?:what(?:'s|\s+is)?\s+|"
+    r"calculate\s+|compute\s+|evaluate\s+|"
+    r"solve\s+|find\s+|work\s+out\s+)",
+    re.IGNORECASE,
+)
 
 
 class Orchestrator:
@@ -71,6 +80,7 @@ class Orchestrator:
             "simple_ollama": f"Ollama: {ollama_model.split('/')[-1]}",
             "complex_sonnet": f"OpenRouter: {SONNET_DISPLAY_NAME}",
             "complex_opus": f"OpenRouter: {OPUS_DISPLAY_NAME}",
+            "maths": "Tool: calculator",
         }
 
     def respond(
@@ -112,7 +122,18 @@ class Orchestrator:
         )
         classification = self._router.classify(query)
         self.last_backend = self._backend_labels[classification]
-        if classification == "trivial_ollama":
+        if classification == "maths":
+            expression = _MATHS_PREAMBLE.sub("", query).rstrip("?").strip()
+            result = calculate(expression)
+            if result.startswith("Error:"):
+                # Expression could not be parsed — fall back to fast Ollama
+                self.last_backend = self._backend_labels["trivial_ollama"]
+                response = self._ollama_respond(
+                    query, augmented, self._fast_model
+                )
+            else:
+                response = result
+        elif classification == "trivial_ollama":
             response = self._ollama_respond(query, augmented, self._fast_model)
         elif classification == "simple_ollama":
             response = self._ollama_respond(

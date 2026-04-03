@@ -271,3 +271,82 @@ class TestMemoryEnabledPerCall:
         orch.respond("hello", [], memory_enabled=True)
         orch._memory.get_context_block.assert_called_once()
         orch._memory.add.assert_called_once()
+
+
+class TestMathsDispatch:
+    """maths classification calls the calculator tool, not an LLM."""
+
+    def _make_orch(self, mocker):
+        mocker.patch(
+            "src.orchestrator.OllamaRouter.classify",
+            return_value="maths",
+        )
+        return Orchestrator(session_id="test-session", memory_enabled=False)
+
+    def test_maths_query_answered_by_calculator(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch(
+            "src.orchestrator.calculate",
+            return_value="4",
+        )
+        response, _ = orch.respond("what is 2 + 2?", [])
+        assert response == "4"
+
+    def test_ollama_not_called_for_maths(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch("src.orchestrator.calculate", return_value="4")
+        mock_ollama = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond"
+        )
+        orch.respond("what is 2 + 2?", [])
+        mock_ollama.assert_not_called()
+
+    def test_claude_not_called_for_maths(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch("src.orchestrator.calculate", return_value="4")
+        mock_claude = mocker.patch("src.orchestrator.OpenRouterClient.ask")
+        orch.respond("what is 2 + 2?", [])
+        mock_claude.assert_not_called()
+
+    def test_backend_label_is_tool_calculator(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch("src.orchestrator.calculate", return_value="4")
+        orch.respond("what is 2 + 2?", [])
+        assert orch.last_backend == "Tool: calculator"
+
+    def test_calculator_error_falls_back_to_fast_ollama(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch(
+            "src.orchestrator.calculate",
+            return_value="Error: invalid syntax",
+        )
+        mock_ollama = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="fallback answer",
+        )
+        response, _ = orch.respond("what day is it?", [])
+        mock_ollama.assert_called_once()
+        assert response == "fallback answer"
+
+    def test_calculator_error_updates_backend_to_ollama(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch(
+            "src.orchestrator.calculate",
+            return_value="Error: invalid syntax",
+        )
+        mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="fallback",
+        )
+        orch.respond("what day is it?", [])
+        assert orch.last_backend != "Tool: calculator"
+
+    def test_preamble_stripped_before_calculate(self, mocker):
+        orch = self._make_orch(mocker)
+        mock_calc = mocker.patch(
+            "src.orchestrator.calculate", return_value="42"
+        )
+        orch.respond("calculate 6 * 7", [])
+        called_expr = mock_calc.call_args.args[0]
+        assert "calculate" not in called_expr.lower()
+        assert "6 * 7" in called_expr
