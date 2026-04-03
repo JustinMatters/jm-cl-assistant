@@ -316,6 +316,12 @@ majority of the context window is preserved for the current conversation.
           or empty string if nothing passes the similarity threshold."""
   ```
 
+- In `__init__`, verify that `nomic-embed-text` is available in the local
+  Ollama instance before proceeding. Use `ollama.list()` (or equivalent) to
+  check installed models and raise a clear `RuntimeError` with a helpful
+  message (e.g. `"nomic-embed-text not found — run: ollama pull nomic-embed-text"`)
+  if it is missing. This surfaces the missing model immediately at startup
+  rather than producing a cryptic HTTP error mid-conversation.
 - Document IDs are generated as `f"{source}_{timestamp}_{uuid4().hex[:8]}"` —
   human-readable and collision-resistant
 - `get_context_block()` formats retrieved records as:
