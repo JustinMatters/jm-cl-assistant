@@ -823,3 +823,130 @@ major-version upgrades silently entering the lockfile.
 - Add tests for bullet and numbered list input in `test_helpers.py`
 
 ---
+
+## Phase 18 — RAG Memory
+
+### Overview
+
+This phase adds persistent, retrievable memory to the assistant using
+Retrieval-Augmented Generation (RAG). Past conversation turns and externally
+sourced content (web search results, Wikipedia summaries, URLs — added in
+Phase 19) are embedded, stored in a local vector database, and retrieved at
+query time. The top-k most semantically relevant past records are injected
+into the system prompt so the assistant can reference prior context across
+sessions.
+
+### Architecture
+
+```
+src/memory/
+├── __init__.py
+└── store.py        ← MemoryStore: the single public interface
+chroma_db/          ← ChromaDB persistence directory (gitignored)
+```
+
+**MemoryStore** wraps ChromaDB and exposes a small, stable API:
+- `add(text, source, metadata)` — store any record with full metadata
+- `search(query, k, filter)` → list of matching records
+- `get_context_block(query)` → formatted string ready to inject into a prompt
+
+This interface is intentionally source-agnostic. Conversation turns, tool
+outputs (web search, Wikipedia, URL reader), and research documents all flow
+through the same `add()` method with different `source` values. Phase 19
+tools call `MemoryStore.add()` directly — no orchestrator involvement needed
+for writes from tools.
+
+**Metadata schema** (every record carries all fields; optional ones default
+to empty string):
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `source` | str | yes | `"conversation"`, `"web_search"`, `"wikipedia"`, `"url"`, `"research"` |
+| `session_id` | str | yes | UUID generated at app startup |
+| `timestamp` | str | yes | ISO 8601 datetime |
+| `keywords` | str | no | Comma-separated keyword tags |
+| `url` | str | no | Origin URL for web-sourced records |
+| `title` | str | no | Document or page title |
+
+ChromaDB metadata values must be scalar strings or numbers — lists are stored
+as comma-separated strings and deserialized on read.
+
+**Embedding**: `nomic-embed-text` via Ollama's `/api/embeddings` endpoint
+(768 dimensions). Uses ChromaDB's built-in `OllamaEmbeddingFunction` — no
+separate embedding step in application code. Prepend inputs with
+`search_document:` on writes and `search_query:` on reads to activate
+nomic-embed-text's instruction-aware retrieval improvement.
+
+**Similarity threshold**: only inject retrieved records with cosine distance
+< 0.7. When the store is sparse (new install, first few sessions), this
+prevents irrelevant context from degrading responses.
+
+**Context budget**: inject up to k=5 records by default, occupying ~20–30%
+of the context window. Each record contributes roughly 512 tokens; the
+majority of the context window is preserved for the current conversation.
+
+### T18.1 — Dependencies and Embedding Model
+**Status:** complete
+
+- Add `chromadb` to project dependencies: `uv add chromadb`
+- Run `uv sync` to install the new dependency and refreeze the lockfile
+- Commit both `pyproject.toml` and `uv.lock` together in a single commit so
+  the lockfile always reflects the declared dependencies
+- Pull the embedding model: `ollama pull nomic-embed-text`
+- Verify the model is available via `ollama list` and that
+  `http://localhost:11434/api/embeddings` responds to a test embed call
+- Add `chroma_db/` to `.gitignore` (the persistence directory must not be
+  committed — it is local to each installation)
+- No application code changes in this ticket; this is environment setup only
+
+### T18.2 — MemoryStore Class
+**Status:** complete
+
+- Create `src/memory/__init__.py` (empty, makes `memory` a package)
+- Create `src/memory/store.py` implementing a `MemoryStore` class with
+  `add()`, `search()`, `get_context_block()`, and `count()` methods
+- In `__init__`, verify that `nomic-embed-text` is available in Ollama and
+  raise a clear `RuntimeError` with a pull command if it is missing
+- Document IDs generated as `f"{source}_{timestamp}_{uuid4().hex[:8]}"`
+- `get_context_block()` formats retrieved records as a
+  `[PAST MEMORIES] … [END MEMORIES]` block with date, source, and optional
+  title/url metadata
+- Add unit tests in `tests/test_memory_store.py` using `tmp_path` fixture
+  with mocked Ollama embedding calls
+
+### T18.3 — Session ID Generation
+**Status:** complete
+
+- Generate a UUID once at app startup in `src/app.py` and pass it to
+  `Orchestrator.__init__` as `session_id`
+- Default to `uuid4().hex` when not provided so existing callers continue
+  to work
+- Update `tests/test_orchestrator.py` to pass an explicit `session_id`
+
+### T18.4 — Conversation Recording
+**Status:** complete
+
+- Instantiate `MemoryStore` in `Orchestrator.__init__` with a
+  `memory_enabled` constructor flag for test isolation
+- After each exchange, call `memory.add()` with the combined turn text;
+  failures are logged and swallowed so memory never blocks a response
+
+### T18.5 — Context Injection
+**Status:** complete
+
+- Before each `Orchestrator.respond()` call, retrieve relevant memories via
+  `get_context_block()` and prepend as a `{"role": "system"}` message
+- Injected context is a local copy — never accumulated into returned history
+- Failures are logged and swallowed; no response is ever blocked
+
+### T18.6 — Memory Toggle and Status Indicator
+**Status:** complete
+
+- Add `gr.Checkbox("Memory", value=True)` and a `gr.Markdown` status label
+  to the Gradio UI
+- `memory_enabled` flag threaded through `process_text`, `process_audio`,
+  and `Orchestrator.respond()` so the user can toggle mid-session
+- Status label shows `"Memory: on · N records"` or `"Memory: off"`
+- Tests verify that `memory_enabled=False` suppresses both reads and writes
+
+---
