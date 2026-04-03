@@ -263,7 +263,7 @@ of the context window. Each record contributes roughly 512 tokens; the
 majority of the context window is preserved for the current conversation.
 
 ### T18.1 — Dependencies and Embedding Model
-**Status:** not started
+**Status:** complete
 
 - Add `chromadb` to project dependencies: `uv add chromadb`
 - Run `uv sync` to install the new dependency and refreeze the lockfile
@@ -277,7 +277,7 @@ majority of the context window is preserved for the current conversation.
 - No application code changes in this ticket; this is environment setup only
 
 ### T18.2 — MemoryStore Class
-**Status:** not started
+**Status:** complete
 
 - Create `src/memory/__init__.py` (empty, makes `memory` a package)
 - Create `src/memory/store.py` implementing a `MemoryStore` class:
@@ -339,7 +339,7 @@ majority of the context window is preserved for the current conversation.
   filtering, empty-store behaviour (returns empty string, not an error).
 
 ### T18.3 — Session ID Generation
-**Status:** not started
+**Status:** complete
 
 - Add session ID generation to `src/app.py`: generate a UUID once at app
   startup (not per message) and pass it to the `Orchestrator`
@@ -352,7 +352,7 @@ majority of the context window is preserved for the current conversation.
   test fixtures
 
 ### T18.4 — Conversation Recording
-**Status:** not started
+**Status:** complete
 
 - Instantiate `MemoryStore` in `Orchestrator.__init__`; add a
   `memory_enabled: bool = True` constructor parameter so tests can disable it
@@ -374,7 +374,7 @@ majority of the context window is preserved for the current conversation.
   relevant to what is being tested
 
 ### T18.5 — Context Injection
-**Status:** not started
+**Status:** complete
 
 - At the start of each call to `Orchestrator.respond()`, before constructing
   the message list, call `memory.get_context_block(user_message)`
@@ -396,7 +396,7 @@ majority of the context window is preserved for the current conversation.
   similarity threshold distance cutoff
 
 ### T18.6 — Memory Toggle and Status Indicator
-**Status:** not started
+**Status:** complete
 
 - Add a `gr.Checkbox` (label: `"Memory"`, value: `True`) to the Gradio UI,
   placed alongside the existing mode controls so it is visually grouped with
@@ -713,7 +713,7 @@ tasks are solved reliably and cheaply without involving a large model.
 | 15 | Dependency Management | T15.1 → T15.3 | complete |
 | 16 | Portability | T16.1 | complete |
 | 17 | Minor Code Quality | T17.1 → T17.2 | complete |
-| 18 | RAG Memory | T18.1 → T18.6 | not started |
+| 18 | RAG Memory | T18.1 → T18.6 | complete |
 | 19 | Tools | T19.1 → T19.15 | not started |
 
 ---
