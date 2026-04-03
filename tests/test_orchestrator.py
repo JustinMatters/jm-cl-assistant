@@ -10,7 +10,7 @@ class TestOrchestratorRespond:
             "src.orchestrator.OllamaRouter.classify",
             return_value=classification,
         )
-        return Orchestrator(session_id="test-session")
+        return Orchestrator(session_id="test-session", memory_enabled=False)
 
     def test_trivial_query_answered_by_fast_ollama(self, mocker):
         orch = self._make_orchestrator(mocker, "trivial_ollama")
@@ -144,7 +144,7 @@ class TestOrchestratorOllamaErrorHandling:
             "src.orchestrator.ollama.chat",
             side_effect=ConnectionError("Ollama not running"),
         )
-        orch = Orchestrator()
+        orch = Orchestrator(memory_enabled=False)
         response, _ = orch.respond("hi", [])
         assert "Ollama error" in response
 
@@ -157,7 +157,7 @@ class TestOrchestratorOllamaErrorHandling:
             "src.orchestrator.ollama.chat",
             side_effect=Exception("model not found"),
         )
-        orch = Orchestrator()
+        orch = Orchestrator(memory_enabled=False)
         response, _ = orch.respond("A question", [])
         assert "Ollama error" in response
 
@@ -170,7 +170,7 @@ class TestOrchestratorOllamaErrorHandling:
             "src.orchestrator.ollama.chat",
             side_effect=ConnectionError("Ollama not running"),
         )
-        orch = Orchestrator()
+        orch = Orchestrator(memory_enabled=False)
         _, history = orch.respond("hi", [])
         assert len(history) == 2
         assert history[0]["role"] == "user"

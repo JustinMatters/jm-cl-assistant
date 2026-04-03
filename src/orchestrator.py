@@ -4,10 +4,12 @@ Composes OllamaRouter for complexity classification, OpenRouterClient for
 Claude responses, and a direct Ollama client for trivial and simple queries.
 """
 
+import logging
 from uuid import uuid4
 
 import ollama
 
+from src.memory.store import MemoryStore
 from src.openrouter_client import (
     OPUS_DISPLAY_NAME,
     SONNET_DISPLAY_NAME,
@@ -31,6 +33,9 @@ class Orchestrator:
         session_id: UUID string identifying this app session. Used as
           metadata on every memory write. Defaults to a fresh UUID so
           existing callers that omit it continue to work.
+        memory_enabled: When False, the memory store is not initialised
+          and no reads or writes occur. Useful in tests and when the
+          user disables memory via the UI toggle.
 
     Attributes:
         last_backend: Human-readable label of the backend that answered
@@ -43,6 +48,7 @@ class Orchestrator:
         ollama_model: str = OLLAMA_MODEL,
         fast_model: str = OLLAMA_FAST_MODEL,
         session_id: str = "",
+        memory_enabled: bool = True,
     ) -> None:
         self._router = OllamaRouter(model=fast_model)
         self._claude = OpenRouterClient()
@@ -50,6 +56,16 @@ class Orchestrator:
         self._ollama_model = ollama_model
         self.session_id: str = session_id or uuid4().hex
         self.last_backend: str = "(awaiting first query)"
+        self._memory: MemoryStore | None = None
+        if memory_enabled:
+            try:
+                self._memory = MemoryStore()
+            except Exception as exc:
+                logging.warning(
+                    "Memory store failed to initialise (%s); "
+                    "continuing without memory",
+                    exc,
+                )
         self._backend_labels = {
             "trivial_ollama": f"Ollama: {fast_model.split('/')[-1]}",
             "simple_ollama": f"Ollama: {ollama_model.split('/')[-1]}",
@@ -86,6 +102,15 @@ class Orchestrator:
             {"role": "user", "content": query},
             {"role": "assistant", "content": response},
         ]
+        if self._memory is not None:
+            try:
+                self._memory.add(
+                    f"User: {query}\nAssistant: {response}",
+                    source="conversation",
+                    session_id=self.session_id,
+                )
+            except Exception as exc:
+                logging.warning("Memory write failed: %s", exc)
         return response, updated_history
 
     def _ollama_respond(self, query: str, history: list, model: str) -> str:
