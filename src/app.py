@@ -9,6 +9,7 @@ import argparse
 import os
 import subprocess
 import time
+from uuid import uuid4
 
 import gradio as gr
 import ollama
@@ -134,7 +135,10 @@ def build_app(
     Returns:
         A configured ``gr.Blocks`` instance ready to launch.
     """
-    orchestrator = Orchestrator(ollama_model=ollama_model)
+    session_id = uuid4().hex
+    orchestrator = Orchestrator(
+        ollama_model=ollama_model, session_id=session_id
+    )
     transcriber = WhisperTranscriber(model=whisper_model)
     speaker = KokoroSpeaker()
 
@@ -174,6 +178,10 @@ def build_app(
                 choices=VOICES,
                 value="af_heart",
                 label="Voice",
+            )
+            memory_checkbox = gr.Checkbox(
+                value=True,
+                label="Memory",
             )
 
         _LINE_HEIGHTS = {
@@ -219,6 +227,19 @@ def build_app(
 
         history_state = gr.State([])
 
+        def _memory_status(enabled: bool) -> str:
+            if not enabled or orchestrator._memory is None:
+                return "Memory: off"
+            return f"Memory: on · {orchestrator._memory.count()} records"
+
+        memory_status = gr.Markdown(_memory_status(True))
+
+        memory_checkbox.change(
+            fn=_memory_status,
+            inputs=memory_checkbox,
+            outputs=memory_status,
+        )
+
         # ── Mode switching ──────────────────────────────────────────────────
 
         def toggle_input_mode(mode):
@@ -255,7 +276,7 @@ def build_app(
 
         # ── Text input flow ─────────────────────────────────────────────────
 
-        def handle_text(query, history, out_mode, show, voice):
+        def handle_text(query, history, out_mode, show, voice, mem_enabled):
             """Handle a text query submitted via the text input or send button.
 
             Args:
@@ -264,13 +285,14 @@ def build_app(
                 out_mode: Output mode — ``"text"`` or ``"text and speech"``.
                 show: Whether to show ``<think>`` tags in the response.
                 voice: Kokoro voice ID for TTS synthesis.
+                mem_enabled: Whether memory reads/writes are active.
 
             Returns:
                 A tuple of ``(display_history, history_state, cleared_input,
-                audio_out)`` suitable for Gradio's ``outputs`` list.
+                audio_out, memory_status)`` suitable for Gradio's outputs.
             """
             if not query.strip():
-                return history, history, "", None
+                return history, history, "", None, _memory_status(mem_enabled)
             display_history, updated_history, audio_out = process_text(
                 query,
                 history,
@@ -280,8 +302,15 @@ def build_app(
                 orchestrator,
                 speaker,
                 lambda: orchestrator.last_backend,
+                memory_enabled=mem_enabled,
             )
-            return display_history, updated_history, "", audio_out
+            return (
+                display_history,
+                updated_history,
+                "",
+                audio_out,
+                _memory_status(mem_enabled),
+            )
 
         submit_btn.click(
             handle_text,
@@ -291,8 +320,15 @@ def build_app(
                 output_mode,
                 show_think,
                 voice_selector,
+                memory_checkbox,
             ],
-            outputs=[chatbot, history_state, text_input, audio_output],
+            outputs=[
+                chatbot,
+                history_state,
+                text_input,
+                audio_output,
+                memory_status,
+            ],
         )
         text_input.submit(
             handle_text,
@@ -302,8 +338,15 @@ def build_app(
                 output_mode,
                 show_think,
                 voice_selector,
+                memory_checkbox,
             ],
-            outputs=[chatbot, history_state, text_input, audio_output],
+            outputs=[
+                chatbot,
+                history_state,
+                text_input,
+                audio_output,
+                memory_status,
+            ],
         )
 
         # ── Speech input flow ───────────────────────────────────────────────
@@ -314,7 +357,9 @@ def build_app(
         # (audio_data=None) returns gr.update() for audio_output so playback
         # is not interrupted.
 
-        def handle_audio(audio_data, history, out_mode, show, voice):
+        def handle_audio(
+            audio_data, history, out_mode, show, voice, mem_enabled
+        ):
             """Handle a microphone recording submitted via the audio input.
 
             Ignores ``None`` audio (re-fired after recorder reset). On
@@ -329,16 +374,18 @@ def build_app(
                 out_mode: Output mode — ``"text"`` or ``"text and speech"``.
                 show: Whether to show ``<think>`` tags in the response.
                 voice: Kokoro voice ID for TTS synthesis.
+                mem_enabled: Whether memory reads/writes are active.
 
             Returns:
                 A tuple of ``(chatbot, history_state, audio_output,
-                audio_input)`` suitable for Gradio's ``outputs`` list.
+                audio_input, memory_status)`` suitable for Gradio's outputs.
             """
             if audio_data is None:
                 # Re-fired by our own reset — leave everything unchanged.
                 return (
                     gr.update(),
                     history,
+                    gr.update(),
                     gr.update(),
                     gr.update(),
                 )
@@ -352,12 +399,14 @@ def build_app(
                     transcriber,
                     orchestrator,
                     speaker,
+                    memory_enabled=mem_enabled,
                 )
                 return (
                     display_history,
                     updated_history,
                     audio_out,
                     gr.update(value=None),  # reset recorder
+                    _memory_status(mem_enabled),
                 )
             except Exception as exc:  # noqa: BLE001
                 err_display = list(history) + [
@@ -371,6 +420,7 @@ def build_app(
                     history,
                     None,
                     gr.update(value=None),  # reset recorder
+                    _memory_status(mem_enabled),
                 )
 
         audio_input.change(
@@ -381,8 +431,15 @@ def build_app(
                 output_mode,
                 show_think,
                 voice_selector,
+                memory_checkbox,
             ],
-            outputs=[chatbot, history_state, audio_output, audio_input],
+            outputs=[
+                chatbot,
+                history_state,
+                audio_output,
+                audio_input,
+                memory_status,
+            ],
         )
 
     return demo

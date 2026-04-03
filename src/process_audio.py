@@ -38,6 +38,7 @@ def process_audio(
     transcriber,
     orchestrator,
     speaker,
+    memory_enabled: bool = True,
 ) -> tuple[list, list, bytes | None]:
     """Validate, transcribe, and respond to audio input.
 
@@ -111,7 +112,9 @@ def process_audio(
 
     # ── Orchestrator dispatch ─────────────────────────────────────────────
     try:
-        response, updated_history = orchestrator.respond(query, history)
+        response, updated_history = orchestrator.respond(
+            query, history, memory_enabled=memory_enabled
+        )
     except ConnectionError:
         return (
             _audio_err(

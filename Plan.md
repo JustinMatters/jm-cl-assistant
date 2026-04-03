@@ -263,7 +263,7 @@ of the context window. Each record contributes roughly 512 tokens; the
 majority of the context window is preserved for the current conversation.
 
 ### T18.1 — Dependencies and Embedding Model
-**Status:** not started
+**Status:** complete
 
 - Add `chromadb` to project dependencies: `uv add chromadb`
 - Run `uv sync` to install the new dependency and refreeze the lockfile
@@ -277,7 +277,7 @@ majority of the context window is preserved for the current conversation.
 - No application code changes in this ticket; this is environment setup only
 
 ### T18.2 — MemoryStore Class
-**Status:** not started
+**Status:** complete
 
 - Create `src/memory/__init__.py` (empty, makes `memory` a package)
 - Create `src/memory/store.py` implementing a `MemoryStore` class:
@@ -316,6 +316,12 @@ majority of the context window is preserved for the current conversation.
           or empty string if nothing passes the similarity threshold."""
   ```
 
+- In `__init__`, verify that `nomic-embed-text` is available in the local
+  Ollama instance before proceeding. Use `ollama.list()` (or equivalent) to
+  check installed models and raise a clear `RuntimeError` with a helpful
+  message (e.g. `"nomic-embed-text not found — run: ollama pull nomic-embed-text"`)
+  if it is missing. This surfaces the missing model immediately at startup
+  rather than producing a cryptic HTTP error mid-conversation.
 - Document IDs are generated as `f"{source}_{timestamp}_{uuid4().hex[:8]}"` —
   human-readable and collision-resistant
 - `get_context_block()` formats retrieved records as:
@@ -333,7 +339,7 @@ majority of the context window is preserved for the current conversation.
   filtering, empty-store behaviour (returns empty string, not an error).
 
 ### T18.3 — Session ID Generation
-**Status:** not started
+**Status:** complete
 
 - Add session ID generation to `src/app.py`: generate a UUID once at app
   startup (not per message) and pass it to the `Orchestrator`
@@ -346,7 +352,7 @@ majority of the context window is preserved for the current conversation.
   test fixtures
 
 ### T18.4 — Conversation Recording
-**Status:** not started
+**Status:** complete
 
 - Instantiate `MemoryStore` in `Orchestrator.__init__`; add a
   `memory_enabled: bool = True` constructor parameter so tests can disable it
@@ -368,7 +374,7 @@ majority of the context window is preserved for the current conversation.
   relevant to what is being tested
 
 ### T18.5 — Context Injection
-**Status:** not started
+**Status:** complete
 
 - At the start of each call to `Orchestrator.respond()`, before constructing
   the message list, call `memory.get_context_block(user_message)`
@@ -389,37 +395,8 @@ majority of the context window is preserved for the current conversation.
   no injection when store is empty, no injection when all results exceed the
   similarity threshold distance cutoff
 
-### T18.6 — Tool Write Interface
-**Status:** not started
-
-- Expose `MemoryStore` as an optional dependency for tool code in Phase 19.
-  The orchestrator holds the single `MemoryStore` instance; pass it into
-  tool calls that should be able to commit records.
-- Add a `store` parameter to the tool dispatch mechanism (established in
-  T19.8 Tool Registry) so tool functions can optionally accept a
-  `store: MemoryStore | None = None` argument. Tools that do not need memory
-  access simply ignore the parameter.
-- Document the expected call pattern for Phase 19 tools that write to memory:
-  ```python
-  # Example: web search tool writing its result to memory
-  if store:
-      store.add(
-          text=result_text,
-          source="web_search",
-          session_id=session_id,
-          keywords=", ".join(top_keywords),
-          url=result_url,
-          title=result_title,
-      )
-  ```
-- This ticket is primarily architectural — ensure the interface is in place
-  and documented before Phase 19 tools are built. No new application
-  behaviour is visible to the user.
-- Add a unit test verifying that a mock tool receives the `store` argument
-  and can call `add()` on it
-
-### T18.7 — Memory Toggle and Status Indicator
-**Status:** not started
+### T18.6 — Memory Toggle and Status Indicator
+**Status:** complete
 
 - Add a `gr.Checkbox` (label: `"Memory"`, value: `True`) to the Gradio UI,
   placed alongside the existing mode controls so it is visually grouped with
@@ -610,7 +587,33 @@ tasks are solved reliably and cheaply without involving a large model.
 - This is the foundation for Approach B tools (LLM-chosen tool use)
 - Add unit tests in `tests/test_registry.py`
 
-### T19.9 — Currency Conversion Tool
+### T19.9 — Memory Write Interface for Tools
+**Status:** not started
+
+- Extend the `ToolRegistry.execute()` dispatch mechanism (T19.8) with an
+  optional `store: MemoryStore | None = None` parameter so tools can commit
+  records without coupling to the Orchestrator directly
+- Tool functions that want to write to memory declare the parameter and
+  receive the live store; tools that do not need it simply omit it
+- Document the expected call pattern for tools that write to memory:
+  ```python
+  # Example: web search tool writing its result to memory
+  if store:
+      store.add(
+          text=result_text,
+          source="web_search",
+          session_id=session_id,
+          keywords=", ".join(top_keywords),
+          url=result_url,
+          title=result_title,
+      )
+  ```
+- Update `Orchestrator.respond()` to pass `orchestrator._memory` (or `None`
+  when memory is disabled) into the tool registry dispatch call
+- Add a unit test verifying that a mock tool receives the `store` argument
+  and can call `add()` on it
+
+### T19.10 — Currency Conversion Tool
 **Status:** not started
 
 - Implement `convert_currency(amount, from_code, to_code) -> str` in
@@ -623,7 +626,7 @@ tasks are solved reliably and cheaply without involving a large model.
   50 euros to dollars" are unambiguous
 - Add unit tests in `tests/test_currency.py` (mock HTTP calls)
 
-### T19.10 — Dictionary / Definition Tool
+### T19.11 — Dictionary / Definition Tool
 **Status:** not started
 
 - Implement `define(word: str) -> str` in `src/tools/dictionary.py`
@@ -635,7 +638,7 @@ tasks are solved reliably and cheaply without involving a large model.
   ephemeral mean" are clear triggers
 - Add unit tests in `tests/test_dictionary.py` (mock HTTP calls)
 
-### T19.11 — Wikipedia Summary Tool
+### T19.12 — Wikipedia Summary Tool
 **Status:** not started
 
 - Implement `wiki_summary(topic: str) -> str` in `src/tools/wikipedia.py`
@@ -647,7 +650,7 @@ tasks are solved reliably and cheaply without involving a large model.
   can rephrase the search term for better results
 - Add unit tests in `tests/test_wikipedia.py` (mock HTTP calls)
 
-### T19.12 — URL Content Summariser
+### T19.13 — URL Content Summariser
 **Status:** not started
 
 - Implement `summarise_url(url: str) -> str` in `src/tools/url_reader.py`
@@ -659,7 +662,7 @@ tasks are solved reliably and cheaply without involving a large model.
   and decides to fetch and summarise it
 - Add unit tests in `tests/test_url_reader.py` (mock HTTP calls)
 
-### T19.13 — Reminder / Timer Tool
+### T19.14 — Reminder / Timer Tool
 **Status:** not started
 
 - Implement a session-scoped reminder system in `src/tools/reminders.py`
@@ -672,7 +675,7 @@ tasks are solved reliably and cheaply without involving a large model.
   "remind me in 10 minutes to check the oven"
 - Add unit tests in `tests/test_reminders.py`
 
-### T19.14 — System Info Tool
+### T19.15 — System Info Tool
 **Status:** not started
 
 - Implement `system_info() -> str` in `src/tools/sysinfo.py`
@@ -710,8 +713,8 @@ tasks are solved reliably and cheaply without involving a large model.
 | 15 | Dependency Management | T15.1 → T15.3 | complete |
 | 16 | Portability | T16.1 | complete |
 | 17 | Minor Code Quality | T17.1 → T17.2 | complete |
-| 18 | RAG Memory | T18.1 → T18.7 | not started |
-| 19 | Tools | T19.1 → T19.14 | not started |
+| 18 | RAG Memory | T18.1 → T18.6 | complete |
+| 19 | Tools | T19.1 → T19.15 | not started |
 
 ---
 

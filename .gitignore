@@ -84,3 +84,6 @@ voices-v1.0.bin
 
 # Research notes (local only)
 research/
+
+# ChromaDB vector store (local data — not committed)
+chroma_db/

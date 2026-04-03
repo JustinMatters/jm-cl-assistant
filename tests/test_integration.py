@@ -7,7 +7,9 @@ import pytest
 
 orchestrator_module = pytest.importorskip("src.orchestrator")
 router_module = pytest.importorskip("src.router")
+memory_module = pytest.importorskip("src.memory.store")
 Orchestrator = orchestrator_module.Orchestrator
+MemoryStore = memory_module.MemoryStore
 OLLAMA_FAST_MODEL = router_module.OLLAMA_FAST_MODEL
 OLLAMA_MODEL = router_module.OLLAMA_MODEL
 
@@ -100,3 +102,39 @@ class TestIntegrationRouting:
         response, _ = orch.respond("hi", [])
         assert isinstance(response, str)
         assert len(response) > 0
+
+
+@pytest.mark.integration
+class TestIntegrationMemory:
+    """Verify the MemoryStore write → read pipeline against live Ollama."""
+
+    def test_add_and_retrieve_conversation_turn(self, tmp_path, ollama_server):
+        store = MemoryStore(persist_dir=str(tmp_path))
+        text = "User: What is the capital of France?\nAssistant: Paris."
+        store.add(text, source="conversation", session_id="integ-sess")
+
+        assert store.count() == 1
+        results = store.search("capital of France")
+        assert len(results) == 1
+        assert "Paris" in results[0]["text"]
+        assert results[0]["source"] == "conversation"
+        assert results[0]["session_id"] == "integ-sess"
+
+    def test_context_block_returned_for_relevant_query(
+        self, tmp_path, ollama_server
+    ):
+        store = MemoryStore(persist_dir=str(tmp_path))
+        store.add(
+            "User: Tell me about Python.\nAssistant: Python is a language.",
+            source="conversation",
+            session_id="integ-sess",
+        )
+        block = store.get_context_block("Python programming")
+        assert "[PAST MEMORIES]" in block
+        assert "Python" in block
+
+    def test_empty_store_returns_empty_context_block(
+        self, tmp_path, ollama_server
+    ):
+        store = MemoryStore(persist_dir=str(tmp_path))
+        assert store.get_context_block("anything") == ""

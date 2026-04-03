@@ -17,6 +17,7 @@ def process_text(
     orchestrator,
     speaker,
     last_backend_fn,
+    memory_enabled: bool = True,
 ) -> tuple[list, list, bytes | None]:
     """Dispatch a text query and return updated history and optional audio.
 
@@ -42,7 +43,9 @@ def process_text(
         ``audio_out`` is ``None``.
     """
     try:
-        response, updated_history = orchestrator.respond(query, history)
+        response, updated_history = orchestrator.respond(
+            query, history, memory_enabled=memory_enabled
+        )
         content = response if show else strip_think_tags(response)
         display_history = list(updated_history)
         display_history[-1] = {
