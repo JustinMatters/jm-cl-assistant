@@ -522,7 +522,7 @@ tasks are solved reliably and cheaply without involving a large model.
 - Update tests in `test_orchestrator.py` and `test_router.py`
 
 ### T19.3 — Unit Conversion Tool (stretch)
-**Status:** not started
+**Status:** complete
 
 - Implement a `convert(value, from_unit, to_unit) -> str` tool in
   `src/tools/converter.py` using the `pint` library
