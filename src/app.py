@@ -9,6 +9,7 @@ import argparse
 import os
 import subprocess
 import time
+from uuid import uuid4
 
 import gradio as gr
 import ollama
@@ -134,7 +135,10 @@ def build_app(
     Returns:
         A configured ``gr.Blocks`` instance ready to launch.
     """
-    orchestrator = Orchestrator(ollama_model=ollama_model)
+    session_id = uuid4().hex
+    orchestrator = Orchestrator(
+        ollama_model=ollama_model, session_id=session_id
+    )
     transcriber = WhisperTranscriber(model=whisper_model)
     speaker = KokoroSpeaker()
 

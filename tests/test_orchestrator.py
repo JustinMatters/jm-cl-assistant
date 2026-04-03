@@ -10,7 +10,7 @@ class TestOrchestratorRespond:
             "src.orchestrator.OllamaRouter.classify",
             return_value=classification,
         )
-        return Orchestrator()
+        return Orchestrator(session_id="test-session")
 
     def test_trivial_query_answered_by_fast_ollama(self, mocker):
         orch = self._make_orchestrator(mocker, "trivial_ollama")

@@ -4,6 +4,8 @@ Composes OllamaRouter for complexity classification, OpenRouterClient for
 Claude responses, and a direct Ollama client for trivial and simple queries.
 """
 
+from uuid import uuid4
+
 import ollama
 
 from src.openrouter_client import (
@@ -26,21 +28,27 @@ class Orchestrator:
           Defaults to OLLAMA_MODEL.
         fast_model: The Ollama model name used for routing/classification
           and trivial-query responses.  Defaults to OLLAMA_FAST_MODEL.
+        session_id: UUID string identifying this app session. Used as
+          metadata on every memory write. Defaults to a fresh UUID so
+          existing callers that omit it continue to work.
 
     Attributes:
         last_backend: Human-readable label of the backend that answered
           the most recent query (e.g. ``"Ollama: qwen3:1.7b"``).
+        session_id: The session identifier passed at construction.
     """
 
     def __init__(
         self,
         ollama_model: str = OLLAMA_MODEL,
         fast_model: str = OLLAMA_FAST_MODEL,
+        session_id: str = "",
     ) -> None:
         self._router = OllamaRouter(model=fast_model)
         self._claude = OpenRouterClient()
         self._fast_model = fast_model
         self._ollama_model = ollama_model
+        self.session_id: str = session_id or uuid4().hex
         self.last_backend: str = "(awaiting first query)"
         self._backend_labels = {
             "trivial_ollama": f"Ollama: {fast_model.split('/')[-1]}",
