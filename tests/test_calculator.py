@@ -1,6 +1,6 @@
 """Unit tests for src/tools/calculator.py."""
 
-from src.tools.calculator import calculate
+from src.tools.calculator import _handle_maths_query, calculate
 
 
 class TestBasicArithmetic:
@@ -122,3 +122,34 @@ class TestErrorHandling:
     def test_unknown_function(self):
         result = calculate("nonexistent_func(5)")
         assert "Error" in result
+
+
+class TestHandleMathsQuery:
+    """Tests for the _handle_maths_query registry handler."""
+
+    def test_plain_expression_evaluated(self):
+        assert _handle_maths_query("2 + 2") == "4"
+
+    def test_what_is_preamble_stripped(self):
+        assert _handle_maths_query("what is 6 * 7?") == "42"
+
+    def test_whats_preamble_stripped(self):
+        assert _handle_maths_query("what's 10 - 3?") == "7"
+
+    def test_calculate_preamble_stripped(self):
+        result = _handle_maths_query("calculate 6 * 7")
+        assert result == "42"
+        # Confirm preamble was not passed to asteval
+        assert result != "Error"
+
+    def test_compute_preamble_stripped(self):
+        assert _handle_maths_query("compute sqrt(9)") == "3"
+
+    def test_evaluate_preamble_stripped(self):
+        assert _handle_maths_query("evaluate 3 ** 3") == "27"
+
+    def test_invalid_expression_returns_none(self):
+        assert _handle_maths_query("not a maths expression!!!") is None
+
+    def test_trailing_question_mark_stripped(self):
+        assert _handle_maths_query("2 + 2?") == "4"

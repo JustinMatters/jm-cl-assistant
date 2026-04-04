@@ -5,6 +5,8 @@ import pytest
 orchestrator_module = pytest.importorskip("src.orchestrator")
 Orchestrator = orchestrator_module.Orchestrator
 
+from src.tools.registry import REGISTRY  # noqa: E402
+
 _MEMORY_BLOCK = (
     "[PAST MEMORIES]\n- [2026-01-01 | conversation] A fact.\n[END MEMORIES]"
 )
@@ -274,7 +276,7 @@ class TestMemoryEnabledPerCall:
 
 
 class TestMathsDispatch:
-    """maths classification calls the calculator tool, not an LLM."""
+    """maths classification calls the calculator tool via the registry."""
 
     def _make_orch(self, mocker):
         mocker.patch(
@@ -283,57 +285,50 @@ class TestMathsDispatch:
         )
         return Orchestrator(session_id="test-session", memory_enabled=False)
 
-    def test_maths_query_answered_by_calculator(self, mocker):
+    def test_maths_query_answered_by_tool(self, mocker):
         orch = self._make_orch(mocker)
-        mocker.patch(
-            "src.orchestrator.calculate",
-            return_value="4",
-        )
+        mocker.patch.object(REGISTRY, "dispatch", return_value="4")
         response, _ = orch.respond("what is 2 + 2?", [])
         assert response == "4"
 
-    def test_ollama_not_called_for_maths(self, mocker):
+    def test_ollama_not_called_when_tool_succeeds(self, mocker):
         orch = self._make_orch(mocker)
-        mocker.patch("src.orchestrator.calculate", return_value="4")
+        mocker.patch.object(REGISTRY, "dispatch", return_value="4")
         mock_ollama = mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond"
         )
         orch.respond("what is 2 + 2?", [])
         mock_ollama.assert_not_called()
 
-    def test_claude_not_called_for_maths(self, mocker):
+    def test_claude_not_called_when_tool_succeeds(self, mocker):
         orch = self._make_orch(mocker)
-        mocker.patch("src.orchestrator.calculate", return_value="4")
+        mocker.patch.object(REGISTRY, "dispatch", return_value="4")
         mock_claude = mocker.patch("src.orchestrator.OpenRouterClient.ask")
         orch.respond("what is 2 + 2?", [])
         mock_claude.assert_not_called()
 
     def test_backend_label_is_tool_calculator(self, mocker):
         orch = self._make_orch(mocker)
-        mocker.patch("src.orchestrator.calculate", return_value="4")
+        mocker.patch.object(REGISTRY, "dispatch", return_value="4")
         orch.respond("what is 2 + 2?", [])
         assert orch.last_backend == "Tool: calculator"
 
-    def test_calculator_error_falls_back_to_fast_ollama(self, mocker):
+    def test_tool_failure_falls_back_to_fast_ollama(self, mocker):
         orch = self._make_orch(mocker)
-        mocker.patch(
-            "src.orchestrator.calculate",
-            return_value="Error: invalid syntax",
-        )
+        mocker.patch.object(REGISTRY, "dispatch", return_value=None)
         mock_ollama = mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="fallback answer",
         )
         response, _ = orch.respond("what day is it?", [])
         mock_ollama.assert_called_once()
+        _, _, model_arg = mock_ollama.call_args.args
+        assert model_arg == orch._fast_model
         assert response == "fallback answer"
 
-    def test_calculator_error_updates_backend_to_ollama(self, mocker):
+    def test_tool_failure_updates_backend_away_from_tool(self, mocker):
         orch = self._make_orch(mocker)
-        mocker.patch(
-            "src.orchestrator.calculate",
-            return_value="Error: invalid syntax",
-        )
+        mocker.patch.object(REGISTRY, "dispatch", return_value=None)
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="fallback",
@@ -341,19 +336,19 @@ class TestMathsDispatch:
         orch.respond("what day is it?", [])
         assert orch.last_backend != "Tool: calculator"
 
-    def test_preamble_stripped_before_calculate(self, mocker):
+    def test_dispatch_called_with_classification_and_query(self, mocker):
         orch = self._make_orch(mocker)
-        mock_calc = mocker.patch(
-            "src.orchestrator.calculate", return_value="42"
+        mock_dispatch = mocker.patch.object(
+            REGISTRY, "dispatch", return_value="42"
         )
         orch.respond("calculate 6 * 7", [])
-        called_expr = mock_calc.call_args.args[0]
-        assert "calculate" not in called_expr.lower()
-        assert "6 * 7" in called_expr
+        call_args = mock_dispatch.call_args
+        assert call_args.args[0] == "maths"
+        assert call_args.args[1] == "calculate 6 * 7"
 
 
 class TestConvertDispatch:
-    """convert classification calls the converter tool, not an LLM."""
+    """convert classification calls the converter tool via the registry."""
 
     def _make_orch(self, mocker):
         mocker.patch(
@@ -362,39 +357,47 @@ class TestConvertDispatch:
         )
         return Orchestrator(session_id="test-session", memory_enabled=False)
 
-    def test_convert_query_answered_by_converter(self, mocker):
+    _CONV_RESULT = "5 mi = 8.047 km"
+
+    def test_convert_query_answered_by_tool(self, mocker):
         orch = self._make_orch(mocker)
-        mocker.patch(
-            "src.orchestrator.convert",
-            return_value="5 mi = 8.047 km",
+        mocker.patch.object(
+            REGISTRY, "dispatch", return_value=self._CONV_RESULT
         )
         response, _ = orch.respond("convert 5 miles to km", [])
-        assert response == "5 mi = 8.047 km"
+        assert response == self._CONV_RESULT
 
-    def test_ollama_not_called_for_convert(self, mocker):
+    def test_ollama_not_called_when_tool_succeeds(self, mocker):
         orch = self._make_orch(mocker)
-        mocker.patch("src.orchestrator.convert", return_value="5 mi = 8.047 km")
+        mocker.patch.object(
+            REGISTRY, "dispatch", return_value=self._CONV_RESULT
+        )
         mock_ollama = mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond"
         )
         orch.respond("convert 5 miles to km", [])
         mock_ollama.assert_not_called()
 
-    def test_claude_not_called_for_convert(self, mocker):
+    def test_claude_not_called_when_tool_succeeds(self, mocker):
         orch = self._make_orch(mocker)
-        mocker.patch("src.orchestrator.convert", return_value="5 mi = 8.047 km")
+        mocker.patch.object(
+            REGISTRY, "dispatch", return_value=self._CONV_RESULT
+        )
         mock_claude = mocker.patch("src.orchestrator.OpenRouterClient.ask")
         orch.respond("convert 5 miles to km", [])
         mock_claude.assert_not_called()
 
     def test_backend_label_is_tool_converter(self, mocker):
         orch = self._make_orch(mocker)
-        mocker.patch("src.orchestrator.convert", return_value="5 mi = 8.047 km")
+        mocker.patch.object(
+            REGISTRY, "dispatch", return_value=self._CONV_RESULT
+        )
         orch.respond("convert 5 miles to km", [])
         assert orch.last_backend == "Tool: converter"
 
-    def test_unparseable_query_falls_back_to_fast_ollama(self, mocker):
+    def test_tool_failure_falls_back_to_fast_ollama(self, mocker):
         orch = self._make_orch(mocker)
+        mocker.patch.object(REGISTRY, "dispatch", return_value=None)
         mock_ollama = mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="fallback answer",
@@ -403,29 +406,22 @@ class TestConvertDispatch:
         mock_ollama.assert_called_once()
         assert response == "fallback answer"
 
-    def test_converter_error_falls_back_to_fast_ollama(self, mocker):
+    def test_tool_failure_updates_backend_away_from_tool(self, mocker):
         orch = self._make_orch(mocker)
-        mocker.patch(
-            "src.orchestrator.convert",
-            return_value="Error: incompatible units",
-        )
-        mock_ollama = mocker.patch(
-            "src.orchestrator.Orchestrator._ollama_respond",
-            return_value="fallback",
-        )
-        response, _ = orch.respond("convert 5 kg to meters", [])
-        mock_ollama.assert_called_once()
-        assert response == "fallback"
-
-    def test_converter_error_updates_backend_label(self, mocker):
-        orch = self._make_orch(mocker)
-        mocker.patch(
-            "src.orchestrator.convert",
-            return_value="Error: incompatible units",
-        )
+        mocker.patch.object(REGISTRY, "dispatch", return_value=None)
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="fallback",
         )
         orch.respond("convert 5 kg to meters", [])
         assert orch.last_backend != "Tool: converter"
+
+    def test_dispatch_called_with_classification_and_query(self, mocker):
+        orch = self._make_orch(mocker)
+        mock_dispatch = mocker.patch.object(
+            REGISTRY, "dispatch", return_value="5 mi = 8.047 km"
+        )
+        orch.respond("convert 5 miles to km", [])
+        call_args = mock_dispatch.call_args
+        assert call_args.args[0] == "convert"
+        assert call_args.args[1] == "convert 5 miles to km"

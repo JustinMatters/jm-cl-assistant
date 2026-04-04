@@ -5,7 +5,6 @@ Claude responses, and a direct Ollama client for trivial and simple queries.
 """
 
 import logging
-import re
 from uuid import uuid4
 
 import ollama
@@ -17,23 +16,7 @@ from src.openrouter_client import (
     OpenRouterClient,
 )
 from src.router import OLLAMA_FAST_MODEL, OLLAMA_MODEL, OllamaRouter
-from src.tools.calculator import calculate
-from src.tools.converter import convert
-
-_MATHS_PREAMBLE = re.compile(
-    r"^\s*(?:what(?:'s|\s+is)?\s+|"
-    r"calculate\s+|compute\s+|evaluate\s+|"
-    r"solve\s+|find\s+|work\s+out\s+)",
-    re.IGNORECASE,
-)
-
-# Matches: [optional preamble] <number> <from_unit> [to|in|into] <to_unit>
-# e.g. "convert 5 miles to km", "100 degF in celsius", "60 mph to m/s"
-_CONVERT_RE = re.compile(
-    r"(\d+(?:\.\d+)?)\s*([\w/]+(?:\s+\w+)??)\s+"
-    r"(?:to|in|into)\s+([\w/]+(?:\s+\w+)?)",
-    re.IGNORECASE,
-)
+from src.tools.registry import REGISTRY
 
 
 class Orchestrator:
@@ -89,8 +72,6 @@ class Orchestrator:
             "simple_ollama": f"Ollama: {ollama_model.split('/')[-1]}",
             "complex_sonnet": f"OpenRouter: {SONNET_DISPLAY_NAME}",
             "complex_opus": f"OpenRouter: {OPUS_DISPLAY_NAME}",
-            "maths": "Tool: calculator",
-            "convert": "Tool: converter",
         }
 
     def respond(
@@ -130,48 +111,49 @@ class Orchestrator:
             if context_block
             else list(history)
         )
+        # Build the active tool set for this turn.
+        # T19.7 will wire this to per-tool UI checkboxes; for now use defaults.
+        active_names = {t.name for t in REGISTRY.all() if t.default_enabled}
+
         classification = self._router.classify(query)
-        self.last_backend = self._backend_labels[classification]
-        if classification == "maths":
-            expression = _MATHS_PREAMBLE.sub("", query).rstrip("?").strip()
-            result = calculate(expression)
-            if result.startswith("Error:"):
-                # Expression could not be parsed — fall back to fast Ollama
-                self.last_backend = self._backend_labels["trivial_ollama"]
-                response = self._ollama_respond(
-                    query, augmented, self._fast_model
-                )
-            else:
-                response = result
-        elif classification == "convert":
-            m = _CONVERT_RE.search(query)
-            if m:
-                value, from_unit, to_unit = (
-                    float(m.group(1)),
-                    m.group(2).strip(),
-                    m.group(3).strip(),
-                )
-                result = convert(value, from_unit, to_unit)
-            else:
-                result = "Error: could not parse conversion"
-            if result.startswith("Error:"):
-                # Fall back to fast Ollama if extraction or conversion fails
-                self.last_backend = self._backend_labels["trivial_ollama"]
-                response = self._ollama_respond(
-                    query, augmented, self._fast_model
-                )
-            else:
-                response = result
-        elif classification == "trivial_ollama":
-            response = self._ollama_respond(query, augmented, self._fast_model)
-        elif classification == "simple_ollama":
-            response = self._ollama_respond(
-                query, augmented, self._ollama_model
+
+        # Attempt tool dispatch — covers all registered Approach A tiers.
+        # dispatch() returns None if the tool cannot handle the query or is
+        # gated by min_tier; orchestrator then falls back to an LLM tier.
+        tool_result = REGISTRY.dispatch(
+            classification, query, active_names, classification
+        )
+        if tool_result is not None:
+            matched = next(
+                (
+                    t
+                    for t in REGISTRY.enabled_tools(active_names)
+                    if t.router_tier == classification
+                ),
+                None,
             )
-        elif classification == "complex_sonnet":
-            response = self._claude.ask(query, "sonnet", augmented)
+            self.last_backend = matched.label if matched else classification
+            response = tool_result
         else:
-            response = self._claude.ask(query, "opus", augmented)
+            # LLM tier, or a tool tier whose tool returned None (fall back).
+            effective = (
+                classification
+                if classification in self._backend_labels
+                else "trivial_ollama"
+            )
+            self.last_backend = self._backend_labels[effective]
+            if effective == "trivial_ollama":
+                response = self._ollama_respond(
+                    query, augmented, self._fast_model
+                )
+            elif effective == "simple_ollama":
+                response = self._ollama_respond(
+                    query, augmented, self._ollama_model
+                )
+            elif effective == "complex_sonnet":
+                response = self._claude.ask(query, "sonnet", augmented)
+            else:
+                response = self._claude.ask(query, "opus", augmented)
         updated_history = list(history) + [
             {"role": "user", "content": query},
             {"role": "assistant", "content": response},

@@ -5,7 +5,11 @@ code. Supports basic arithmetic, exponentiation, modulo, parentheses, and
 common maths functions via the asteval ``Interpreter``.
 """
 
+import re as _re
+
 from asteval import Interpreter
+
+from src.tools.registry import REGISTRY, ToolDefinition
 
 _AEVAL = Interpreter(minimal=True, use_numpy=False)
 
@@ -81,3 +85,52 @@ def calculate(expression: str) -> str:
         return str(int(result))
 
     return str(result)
+
+
+# Regex that strips natural-language preamble before passing to asteval.
+# e.g. "what is 2+2?" → "2+2", "calculate sqrt(9)" → "sqrt(9)"
+_MATHS_PREAMBLE = _re.compile(
+    r"^\s*(?:what(?:'s|\s+is)?\s+|"
+    r"calculate\s+|compute\s+|evaluate\s+|"
+    r"solve\s+|find\s+|work\s+out\s+)",
+    _re.IGNORECASE,
+)
+
+
+def _handle_maths_query(query: str) -> str | None:
+    """Handle a raw maths query by stripping preamble and evaluating.
+
+    Args:
+        query: The raw user query string, e.g. ``"what is sqrt(144)?"``.
+
+    Returns:
+        The calculated result as a string, or ``None`` if asteval
+        returns an error (signals the orchestrator to fall back to LLM).
+    """
+    expression = _MATHS_PREAMBLE.sub("", query).rstrip("?").strip()
+    result = calculate(expression)
+    return None if result.startswith("Error:") else result
+
+
+REGISTRY.register(
+    ToolDefinition(
+        name="calculator",
+        router_tier="maths",
+        label="Tool: calculator",
+        description=(
+            "arithmetic, algebra, and any query whose answer is a number: "
+            "expressions to evaluate, percentages, powers, roots, trigonometry"
+        ),
+        examples=[
+            "what is 2+2",
+            "calculate sqrt(144)",
+            "15% of 200",
+            "2**10",
+        ],
+        default_enabled=True,
+        min_tier="trivial_ollama",
+        approach="A",
+        callable=_handle_maths_query,
+        category="maths",
+    )
+)
