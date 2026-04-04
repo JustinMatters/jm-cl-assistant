@@ -334,7 +334,7 @@ tasks are solved reliably and cheaply without involving a large model.
 ---
 
 ### T19.4 — Tool Definition Protocol
-**Status:** not started
+**Status:** complete
 
 Introduce the `ToolDefinition` dataclass in `src/tools/registry.py` that
 carries all metadata needed for routing, UI display, and LLM function calling:
@@ -375,7 +375,7 @@ class ToolDefinition:
   and that missing required fields raise `TypeError`
 
 ### T19.5 — Tool Registry
-**Status:** not started
+**Status:** complete
 
 Implement `ToolRegistry` in `src/tools/registry.py`:
 
