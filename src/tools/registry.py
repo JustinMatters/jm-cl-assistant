@@ -11,9 +11,14 @@ fully populated as soon as any code imports from this package.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.memory.store import MemoryStore
 
 # Rank table used to enforce min_tier at dispatch time.
 # Tool tiers (e.g. "maths", "convert") are absent from this table;
@@ -153,6 +158,7 @@ class ToolRegistry:
         query: str,
         enabled_names: set[str],
         current_route_tier: str,
+        store: MemoryStore | None = None,
     ) -> str | None:
         """Dispatch a query to the matching enabled tool.
 
@@ -165,6 +171,11 @@ class ToolRegistry:
         UI/schema layer — a tool is refused even if it somehow appears
         in the schema sent to the model.
 
+        If the tool's callable declares a ``store`` keyword parameter, the
+        live ``MemoryStore`` (or ``None`` when memory is disabled) is
+        injected automatically — tools that do not need it simply omit
+        the parameter from their signature.
+
         Args:
             tier: The classification token produced by the router.
             query: The raw user query string, passed to the tool callable.
@@ -172,6 +183,9 @@ class ToolRegistry:
             current_route_tier: The route tier for this turn; used to
               enforce ``min_tier``.  Tool tiers resolve to rank 0 via the
               rank table default.
+            store: Optional live ``MemoryStore`` passed to tools that
+              declare a ``store`` parameter.  ``None`` when memory is
+              disabled or unavailable.
 
         Returns:
             The tool callable's return value (a result string or ``None``
@@ -201,6 +215,9 @@ class ToolRegistry:
                     current_rank,
                 )
                 return None
+            sig = inspect.signature(t.callable)
+            if "store" in sig.parameters:
+                return t.callable(query, store=store)
             return t.callable(query)
         return None
 

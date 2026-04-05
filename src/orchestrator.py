@@ -130,7 +130,11 @@ class Orchestrator:
         # dispatch() returns None if the tool cannot handle the query or is
         # gated by min_tier; orchestrator then falls back to an LLM tier.
         tool_result = REGISTRY.dispatch(
-            classification, query, active_names, classification
+            classification,
+            query,
+            active_names,
+            classification,
+            store=self._memory if memory_enabled else None,
         )
         if tool_result is not None:
             matched = next(

@@ -267,6 +267,76 @@ class TestSchemas:
         assert reg.schemas(set()) == []
 
 
+class TestDispatchWithStore:
+    def test_store_passed_to_tool_that_declares_it(self):
+        received = {}
+
+        def store_aware(query, store=None):
+            received["store"] = store
+            return "ok"
+
+        reg = ToolRegistry()
+        reg.register(
+            _make_tool(name="t", router_tier="r", callable_fn=store_aware)
+        )
+        mock_store = object()
+        result = reg.dispatch(
+            "r", "q", {"t"}, "trivial_ollama", store=mock_store
+        )
+        assert result == "ok"
+        assert received["store"] is mock_store
+
+    def test_store_not_passed_to_tool_without_parameter(self):
+        received = {}
+
+        def plain(query):
+            received["called"] = True
+            return "plain"
+
+        reg = ToolRegistry()
+        reg.register(_make_tool(name="t", router_tier="r", callable_fn=plain))
+        mock_store = object()
+        result = reg.dispatch(
+            "r", "q", {"t"}, "trivial_ollama", store=mock_store
+        )
+        assert result == "plain"
+        assert received.get("called") is True
+
+    def test_store_none_passed_when_memory_disabled(self):
+        received = {}
+
+        def store_aware(query, store=None):
+            received["store"] = store
+            return "ok"
+
+        reg = ToolRegistry()
+        reg.register(
+            _make_tool(name="t", router_tier="r", callable_fn=store_aware)
+        )
+        reg.dispatch("r", "q", {"t"}, "trivial_ollama", store=None)
+        assert received["store"] is None
+
+    def test_tool_can_call_add_on_store(self, mocker):
+        mock_store = mocker.MagicMock()
+
+        def store_aware(query, store=None):
+            if store:
+                store.add(text=query, source="tool_test", session_id="s1")
+            return "done"
+
+        reg = ToolRegistry()
+        reg.register(
+            _make_tool(name="t", router_tier="r", callable_fn=store_aware)
+        )
+        result = reg.dispatch(
+            "r", "hello", {"t"}, "trivial_ollama", store=mock_store
+        )
+        assert result == "done"
+        mock_store.add.assert_called_once_with(
+            text="hello", source="tool_test", session_id="s1"
+        )
+
+
 class TestGlobalRegistry:
     """The global REGISTRY has calculator and converter registered."""
 

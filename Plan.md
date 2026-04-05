@@ -460,7 +460,7 @@ receive the result, and continue reasoning before returning to the user.
 ---
 
 ### T19.9 — Memory Write Interface for Tools
-**Status:** not started
+**Status:** complete
 
 - Extend the `ToolRegistry.dispatch()` mechanism (T19.5) with an optional
   `store: MemoryStore | None = None` parameter so tools can commit records
@@ -678,7 +678,7 @@ receive the result, and continue reasoning before returning to the user.
 | 16 | Portability | T16.1 | complete |
 | 17 | Minor Code Quality | T17.1 → T17.2 | complete |
 | 18 | RAG Memory | T18.1 → T18.6 | complete |
-| 19 | Tools | T19.1 → T19.20 | in progress (T19.1–T19.3 complete) |
+| 19 | Tools | T19.1 → T19.20 | in progress (T19.1–T19.9 complete) |
 
 ---
 
