@@ -51,7 +51,13 @@ class TestOrchestratorRespond:
             return_value="A detailed answer.",
         )
         response, _ = orch.respond("Explain the French Revolution.", [])
-        mock_claude.assert_called_once_with(mocker.ANY, "sonnet", mocker.ANY)
+        mock_claude.assert_called_once_with(
+            mocker.ANY,
+            "sonnet",
+            mocker.ANY,
+            tools=None,
+            tool_executor=None,
+        )
         assert response == "A detailed answer."
 
     def test_complex_opus_query_answered_by_claude_opus(self, mocker):
@@ -61,7 +67,13 @@ class TestOrchestratorRespond:
             return_value="A highly detailed answer.",
         )
         response, _ = orch.respond("Prove the Riemann hypothesis.", [])
-        mock_claude.assert_called_once_with(mocker.ANY, "opus", mocker.ANY)
+        mock_claude.assert_called_once_with(
+            mocker.ANY,
+            "opus",
+            mocker.ANY,
+            tools=None,
+            tool_executor=None,
+        )
         assert response == "A highly detailed answer."
 
     def test_history_is_returned_updated(self, mocker):

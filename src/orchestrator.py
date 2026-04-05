@@ -4,6 +4,7 @@ Composes OllamaRouter for complexity classification, OpenRouterClient for
 Claude responses, and a direct Ollama client for trivial and simple queries.
 """
 
+import json
 import logging
 from uuid import uuid4
 
@@ -150,18 +151,42 @@ class Orchestrator:
                 else "trivial_ollama"
             )
             self.last_backend = self._backend_labels[effective]
+            b_schemas = REGISTRY.schemas(active_names)
+            b_executor = (
+                self._make_b_executor(active_names) if b_schemas else None
+            )
             if effective == "trivial_ollama":
                 response = self._ollama_respond(
-                    query, augmented, self._fast_model
+                    query,
+                    augmented,
+                    self._fast_model,
+                    tools=b_schemas,
+                    tool_executor=b_executor,
                 )
             elif effective == "simple_ollama":
                 response = self._ollama_respond(
-                    query, augmented, self._ollama_model
+                    query,
+                    augmented,
+                    self._ollama_model,
+                    tools=b_schemas,
+                    tool_executor=b_executor,
                 )
             elif effective == "complex_sonnet":
-                response = self._claude.ask(query, "sonnet", augmented)
+                response = self._claude.ask(
+                    query,
+                    "sonnet",
+                    augmented,
+                    tools=b_schemas or None,
+                    tool_executor=b_executor,
+                )
             else:
-                response = self._claude.ask(query, "opus", augmented)
+                response = self._claude.ask(
+                    query,
+                    "opus",
+                    augmented,
+                    tools=b_schemas or None,
+                    tool_executor=b_executor,
+                )
         updated_history = list(history) + [
             {"role": "user", "content": query},
             {"role": "assistant", "content": response},
@@ -177,20 +202,114 @@ class Orchestrator:
                 logging.warning("Memory write failed: %s", exc)
         return response, updated_history
 
-    def _ollama_respond(self, query: str, history: list, model: str) -> str:
+    def _make_b_executor(self, active_names: set[str]):
+        """Return a tool executor for Approach B (LLM function-calling) tools.
+
+        The returned callable looks up the tool by name in the registry,
+        normalises ``arguments`` to a JSON string (Ollama passes a dict;
+        OpenRouter passes a string), and calls the tool's ``callable``.
+
+        Args:
+            active_names: Set of tool names currently enabled.
+
+        Returns:
+            A ``(name, arguments) -> str`` callable suitable for passing
+            to ``OpenRouterClient.ask()`` or ``_ollama_respond()``.
+        """
+
+        def _execute(name: str, arguments: str | dict) -> str:
+            tools = REGISTRY.enabled_tools(active_names)
+            tool = next((t for t in tools if t.name == name), None)
+            if tool is None:
+                return f"Error: unknown tool {name!r}"
+            args_str = (
+                json.dumps(arguments)
+                if isinstance(arguments, dict)
+                else arguments
+            )
+            try:
+                result = tool.callable(args_str)
+                return (
+                    result
+                    if result is not None
+                    else f"Error: {name} returned no result"
+                )
+            except Exception as exc:
+                return f"Error executing {name}: {exc}"
+
+        return _execute
+
+    def _ollama_respond(
+        self,
+        query: str,
+        history: list,
+        model: str,
+        tools: list[dict] | None = None,
+        tool_executor=None,
+        max_tool_iterations: int = 5,
+    ) -> str:
         """Send a query to a local Ollama model and return the response.
+
+        When ``tools`` and ``tool_executor`` are provided, runs an
+        agentic loop matching the Ollama native tool-calling protocol
+        (arguments arrive as a Python dict, not a JSON string).
 
         Args:
             query: The user's input text.
             history: Conversation history as a list of message dicts.
             model: The Ollama model name to call.
+            tools: OpenAI-compatible tool schemas to pass to the model.
+              ``None`` or ``[]`` disables tool calling.
+            tool_executor: Callable invoked as
+              ``tool_executor(name, arguments)`` where ``arguments`` is
+              a Python dict from the Ollama response.
+            max_tool_iterations: Maximum tool-call rounds before the
+              loop is terminated with a guard message.
 
         Returns:
             The model's response text.
         """
         messages = list(history) + [{"role": "user", "content": query}]
-        try:
-            result = ollama.chat(model=model, messages=messages)
-            return result["message"]["content"]
-        except Exception as exc:
-            return f"(Ollama error: {exc} — please check it is running)"
+        tool_rounds = 0
+        while True:
+            try:
+                chat_kwargs: dict = {"model": model, "messages": messages}
+                if tools:
+                    chat_kwargs["tools"] = tools
+                result = ollama.chat(**chat_kwargs)
+            except Exception as exc:
+                return f"(Ollama error: {exc} — please check it is running)"
+
+            msg = result["message"]
+            tool_calls = msg.get("tool_calls")
+
+            if not tool_calls or not tools or not tool_executor:
+                return msg.get("content") or ""
+
+            # Append assistant message and execute each tool call.
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.get("content") or "",
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": c["function"]["name"],
+                                "arguments": c["function"]["arguments"],
+                            }
+                        }
+                        for c in tool_calls
+                    ],
+                }
+            )
+            for call in tool_calls:
+                fn = call["function"]
+                result_str = tool_executor(fn["name"], fn["arguments"])
+                messages.append({"role": "tool", "content": result_str})
+
+            tool_rounds += 1
+            if tool_rounds >= max_tool_iterations:
+                return (
+                    f"(Tool loop reached {max_tool_iterations} iterations"
+                    " without a final response)"
+                )

@@ -434,7 +434,7 @@ Implement `ToolRegistry` in `src/tools/registry.py`:
 - Update `handle_text()` and `handle_audio()` in `app.py` accordingly
 
 ### T19.8 — Agentic Tool Use Loop (Approach B)
-**Status:** not started
+**Status:** complete
 
 Currently all tools are called *instead of* the LLM (Approach A: router
 decides). Approach B lets the LLM itself decide to call a tool mid-response,
