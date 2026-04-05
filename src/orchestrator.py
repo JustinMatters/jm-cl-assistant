@@ -115,7 +115,7 @@ class Orchestrator:
         # T19.7 will wire this to per-tool UI checkboxes; for now use defaults.
         active_names = {t.name for t in REGISTRY.all() if t.default_enabled}
 
-        classification = self._router.classify(query)
+        classification = self._router.classify(query, active_names)
 
         # Attempt tool dispatch — covers all registered Approach A tiers.
         # dispatch() returns None if the tool cannot handle the query or is

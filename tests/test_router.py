@@ -159,14 +159,14 @@ class TestMathsClassification:
         mock_client = mocker.patch("src.router.ollama.chat")
         mock_client.return_value = {"message": {"content": "maths"}}
         router = OllamaRouter()
-        result = router.classify("what is 2 + 2?")
+        result = router.classify("what is 2 + 2?", {"calculator"})
         assert result == "maths"
 
     def test_maths_is_a_valid_classification(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
         mock_client.return_value = {"message": {"content": "maths"}}
         router = OllamaRouter()
-        result = router.classify(MATHS_QUERIES[0])
+        result = router.classify(MATHS_QUERIES[0], {"calculator"})
         assert result in VALID_CLASSIFICATIONS
 
     @pytest.mark.parametrize("query", MATHS_QUERIES)
@@ -174,7 +174,7 @@ class TestMathsClassification:
         mock_client = mocker.patch("src.router.ollama.chat")
         mock_client.return_value = {"message": {"content": "maths"}}
         router = OllamaRouter()
-        result = router.classify(query)
+        result = router.classify(query, {"calculator"})
         assert result in VALID_CLASSIFICATIONS
 
 
@@ -183,14 +183,14 @@ class TestConvertClassification:
         mock_client = mocker.patch("src.router.ollama.chat")
         mock_client.return_value = {"message": {"content": "convert"}}
         router = OllamaRouter()
-        result = router.classify("convert 5 miles to km")
+        result = router.classify("convert 5 miles to km", {"converter"})
         assert result == "convert"
 
     def test_convert_is_a_valid_classification(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
         mock_client.return_value = {"message": {"content": "convert"}}
         router = OllamaRouter()
-        result = router.classify(CONVERT_QUERIES[0])
+        result = router.classify(CONVERT_QUERIES[0], {"converter"})
         assert result in VALID_CLASSIFICATIONS
 
     @pytest.mark.parametrize("query", CONVERT_QUERIES)
@@ -198,8 +198,60 @@ class TestConvertClassification:
         mock_client = mocker.patch("src.router.ollama.chat")
         mock_client.return_value = {"message": {"content": "convert"}}
         router = OllamaRouter()
-        result = router.classify(query)
+        result = router.classify(query, {"converter"})
         assert result in VALID_CLASSIFICATIONS
+
+
+class TestDynamicRouter:
+    def test_tool_tier_valid_when_enabled(self, mocker):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "maths"}}
+        router = OllamaRouter()
+        result = router.classify("2 + 2", {"calculator"})
+        assert result == "maths"
+
+    def test_tool_tier_falls_back_when_disabled(self, mocker):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "maths"}}
+        router = OllamaRouter()
+        result = router.classify("2 + 2", set())
+        assert result == "trivial_ollama"
+
+    def test_tool_tier_falls_back_when_no_tools_arg(self, mocker):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "maths"}}
+        router = OllamaRouter()
+        result = router.classify("2 + 2")
+        assert result == "trivial_ollama"
+
+    def test_enabled_tool_tier_in_system_prompt(self, mocker):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "maths"}}
+        router = OllamaRouter()
+        router.classify("2 + 2", {"calculator"})
+        msgs = mock_client.call_args.kwargs["messages"]
+        system_content = msgs[0]["content"]
+        assert "maths" in system_content
+
+    def test_disabled_tool_tier_absent_from_system_prompt(self, mocker):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "trivial_ollama"}}
+        router = OllamaRouter()
+        router.classify("2 + 2", set())
+        msgs = mock_client.call_args.kwargs["messages"]
+        system_content = msgs[0]["content"]
+        assert "maths" not in system_content
+        assert "convert" not in system_content
+
+    def test_both_tools_enabled_both_tiers_in_prompt(self, mocker):
+        mock_client = mocker.patch("src.router.ollama.chat")
+        mock_client.return_value = {"message": {"content": "trivial_ollama"}}
+        router = OllamaRouter()
+        router.classify("hi", {"calculator", "converter"})
+        msgs = mock_client.call_args.kwargs["messages"]
+        system_content = msgs[0]["content"]
+        assert "maths" in system_content
+        assert "convert" in system_content
 
 
 class TestOllamaRouterErrorHandling:

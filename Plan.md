@@ -400,7 +400,7 @@ Implement `ToolRegistry` in `src/tools/registry.py`:
 - Add unit tests in `tests/test_registry.py`
 
 ### T19.6 — Dynamic Router
-**Status:** not started
+**Status:** complete
 
 - `OllamaRouter.classify()` accepts an `enabled_tools` set and builds its
   `_VALID` set and system prompt dynamically from the registry:
