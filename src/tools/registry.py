@@ -77,7 +77,7 @@ class ToolDefinition:
     default_enabled: bool
     min_tier: str
     approach: str
-    callable: Callable[[str], str | None]
+    callable: Callable[..., str | None]
     category: str = "general"
     is_async: bool = False
     parameters_schema: dict | None = None
