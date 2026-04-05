@@ -545,7 +545,7 @@ receive the result, and continue reasoning before returning to the user.
 - Add unit tests in `tests/test_weather.py` (mock HTTP calls)
 
 ### T19.14 — Currency Conversion Tool
-**Status:** not started
+**Status:** complete
 
 - Implement `convert_currency(amount, from_code, to_code) -> str` in
   `src/tools/currency.py`
@@ -678,7 +678,7 @@ receive the result, and continue reasoning before returning to the user.
 | 16 | Portability | T16.1 | complete |
 | 17 | Minor Code Quality | T17.1 → T17.2 | complete |
 | 18 | RAG Memory | T18.1 → T18.6 | complete |
-| 19 | Tools | T19.1 → T19.20 | in progress (T19.1–T19.13 complete) |
+| 19 | Tools | T19.1 → T19.20 | in progress (T19.1–T19.14 complete) |
 
 ---
 

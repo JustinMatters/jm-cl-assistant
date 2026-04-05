@@ -10,6 +10,7 @@ an LLM for queries where a precise, reliable answer is preferred.
 # here so the registry is fully populated before first use.
 from src.tools import calculator as _calculator  # noqa: F401
 from src.tools import converter as _converter  # noqa: F401
+from src.tools import currency as _currency  # noqa: F401
 from src.tools import datetime_tool as _datetime_tool  # noqa: F401
 from src.tools import location as _location  # noqa: F401
 from src.tools import weather as _weather  # noqa: F401
