@@ -51,6 +51,59 @@ class TestRunCodeCallable:
         assert "4" in result
 
 
+class TestSandboxEscape:
+    """Verify that common sandbox-escape vectors are blocked by asteval.
+
+    Each test passes an escape attempt as a string to _run_code_callable
+    and asserts the result contains "Error".  Tests are safe regardless of
+    outcome: even if asteval somehow did not block a vector, the call would
+    return a value (not cause harm), and the assertion would then fail,
+    surfacing the regression without side effects.
+    """
+
+    def _assert_blocked(self, code: str) -> None:
+        import json
+
+        result = _run_code_callable(json.dumps({"code": code}))
+        assert "Error" in result, (
+            f"Expected sandbox to block {code!r} but got: {result!r}"
+        )
+
+    def test_import_blocked(self):
+        self._assert_blocked("import os")
+
+    def test_import_sys_blocked(self):
+        self._assert_blocked("import sys")
+
+    def test_exec_blocked(self):
+        self._assert_blocked('exec("import os")')
+
+    def test_eval_blocked(self):
+        self._assert_blocked('eval("1+1")')
+
+    def test_open_blocked(self):
+        self._assert_blocked("open('test.txt', 'w')")
+
+    def test_compile_blocked(self):
+        self._assert_blocked('compile("import os", "<str>", "exec")')
+
+    def test_globals_blocked(self):
+        self._assert_blocked("globals()")
+
+    def test_locals_blocked(self):
+        self._assert_blocked("locals()")
+
+    def test_dunder_import_blocked(self):
+        self._assert_blocked('__import__("os")')
+
+    def test_getattr_builtins_blocked(self):
+        self._assert_blocked('getattr(__builtins__, "__import__")')
+
+    def test_subclass_escape_blocked(self):
+        # MRO-based escape to reach file/socket classes
+        self._assert_blocked("().__class__.__bases__[0].__subclasses__()")
+
+
 class TestGlobalRegistration:
     def test_code_exec_registered(self):
         from src.tools.registry import REGISTRY

@@ -10,10 +10,21 @@ Hybrid AI chatbot that routes queries between a local Ollama model and Claude
 - `src/openrouter_client.py` — OpenRouterClient: wraps OpenAI-compatible REST API,
   targets claude-sonnet-4-6 and claude-opus-4-6 via OpenRouter
 - `src/orchestrator.py` — Orchestrator: composes router + clients, manages
-  conversation history
+  conversation history, drives Approach B tool-use loop, handles pending
+  confirmation for tools that require user approval before execution
 - `src/speech_input.py` — WhisperTranscriber: STT via openai-whisper
 - `src/speech_output.py` — KokoroSpeaker: TTS via kokoro-onnx
-- `src/app.py` — Gradio Blocks UI, mode switching, wires all components
+- `src/app.py` — Gradio Blocks UI, mode switching, wires all components;
+  includes confirmation modal for sandboxed code execution
+- `src/memory/` — RAG memory store backed by ChromaDB; injects relevant past
+  context into each LLM call; can be toggled on/off per session
+- `src/tools/` — Runtime tool registry; each tool self-registers at import
+  time via `REGISTRY.register(ToolDefinition(...))`
+  - Approach A tools: router-dispatched (calculator, converter, currency,
+    datetime, weather, dictionary, location, web search, Wikipedia summary,
+    URL reader, reminders, system info)
+  - Approach B tools: LLM function-calling (Wikipedia, URL reader, reminders,
+    code execution sandbox); sandboxed code requires UI confirmation
 - `tests/` — pytest unit tests (mocked) + integration tests (live Ollama,
   marked with @pytest.mark.integration)
 

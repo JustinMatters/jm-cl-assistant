@@ -37,6 +37,9 @@ User Input (text | Whisper speech)
 - **Intelligent routing** — local Ollama model classifies query complexity and dispatches accordingly
 - **Claude API integration** — Sonnet for moderately complex queries, Opus for the hardest ones
 - **Flexible output** — text only, or text and speech (Kokoro TTS)
+- **Runtime tools** — deterministic answers for maths, unit conversion, currency rates, date/time, weather, dictionary definitions, web search, Wikipedia summaries, URL reading, and reminders; each tool can be toggled on/off in the UI
+- **Code execution sandbox** — LLM-drafted Python snippets run via a restricted asteval interpreter; a confirmation modal shows the code before anything executes so you can approve or deny
+- **RAG memory** — past conversations stored in a local ChromaDB vector store and injected as context on relevant queries; toggleable per session
 
 ## Requirements
 
@@ -186,6 +189,10 @@ uv run pytest -m integration
 | TTS | Kokoro |
 | Local model / routing | Ollama |
 | Cloud LLM | Claude Sonnet 4.6 / Opus 4.6 via OpenRouter |
+| Memory / vector store | ChromaDB |
+| Web search | DuckDuckGo (ddgs) |
+| URL content extraction | trafilatura |
+| Code sandbox | asteval |
 | Package management | UV |
 | Linting / formatting | Ruff |
 | Testing | pytest |
