@@ -243,11 +243,13 @@ User Input (text | Whisper speech)
 
 ### Overview
 
-Six new capabilities grouped by the infrastructure they share.  T20.1 and
-T20.2 are enabling tickets that later tools depend on; the remaining four
-can be built in any order once those two are in place.
+Seven new capabilities.  **T20.1 should be done first** — it replaces the
+default local model and may simplify the vision routing in later tickets.
+T20.2 and T20.3 are enabling tickets that later tools depend on; the
+remaining four (T20.4–T20.7) can be built in any order once those two are
+in place.
 
-**Shared image output mechanism (T20.2):** Tools that produce images
+**Shared image output mechanism (T20.3):** Tools that produce images
 (flowcharts, data plots, generated images) return their output as a
 `bytes` object tagged with the prefix `__IMAGE__:` followed by a
 base64-encoded PNG.  The orchestrator detects this sentinel and routes the
@@ -258,22 +260,22 @@ the normal text path unchanged for tools that return strings.
 
 | Package | Purpose | Ticket |
 |---------|---------|--------|
-| `pypdf` | PDF text extraction | T20.1 |
-| `python-docx` | DOCX text extraction | T20.1 |
-| `graphviz` (Python + system binary) | DOT → PNG rendering | T20.3 |
-| `polars` | DataFrame reads / summary stats | T20.5 |
-| `matplotlib` | Plot generation | T20.5 |
-| `openpyxl` | Excel file support for polars | T20.5 |
-| `diffusers` | Local diffusion image generation | T20.6 |
-| `transformers` | Model loading for diffusers | T20.6 |
-| `accelerate` | Diffusers performance layer | T20.6 |
+| `pypdf` | PDF text extraction | T20.2 |
+| `python-docx` | DOCX text extraction | T20.2 |
+| `graphviz` (Python + system binary) | DOT → PNG rendering | T20.4 |
+| `polars` | DataFrame reads / summary stats | T20.6 |
+| `matplotlib` | Plot generation | T20.6 |
+| `openpyxl` | Excel file support for polars | T20.6 |
+| `diffusers` | Local diffusion image generation | T20.7 |
+| `transformers` | Model loading for diffusers | T20.7 |
+| `accelerate` | Diffusers performance layer | T20.7 |
 
 `torch` is already declared; `trafilatura` (HTML extraction) is already
 present.
 
 ---
 
-### T20.1 — File Reader Tool (local path + URL)
+### T20.2 — File Reader Tool (local path + URL)
 **Status:** not started
 
 Implement `src/tools/file_reader.py` — a single Approach B tool that reads
@@ -311,11 +313,11 @@ remote URL.
 
 ---
 
-### T20.2 — Image Output Infrastructure
+### T20.3 — Image Output Infrastructure
 **Status:** not started
 
 All tools that produce images need a shared mechanism to deliver them to
-the Gradio UI.  This ticket establishes that mechanism so T20.3–T20.6 each
+the Gradio UI.  This ticket establishes that mechanism so T20.4–T20.7 each
 have a clean, consistent path.
 
 **Return value convention:**
@@ -360,19 +362,19 @@ Add unit tests in `tests/test_image_utils.py`.
 
 ---
 
-### T20.3 — Flowchart Generation Tool
+### T20.4 — Flowchart Generation Tool
 **Status:** not started
 
 Implement `src/tools/flowchart.py` — the LLM generates
 [Graphviz DOT notation](https://graphviz.org/doc/info/lang.html) and the
-tool renders it to a PNG image returned via the T20.2 sentinel.
+tool renders it to a PNG image returned via the T20.3 sentinel.
 
 **Design notes:**
 - Approach B tool; parameters schema:
   `{"dot": {"type": "string", "description": "Valid Graphviz DOT source"}}`.
 - Use the `graphviz` Python library (`graphviz.Source(dot).pipe(format="png")`)
   to render to PNG bytes without writing to disk.
-- Pass the PNG bytes through `encode_image()` (T20.2) to produce the
+- Pass the PNG bytes through `encode_image()` (T20.3) to produce the
   sentinel return value.
 - On `graphviz.ExecutableNotFound`: return a clear error message asking
   the user to install Graphviz (`winget install graphviz` / `brew install
@@ -389,7 +391,7 @@ instruct user to also install the Graphviz system binary separately.
 
 ---
 
-### T20.4 — Vision API Support
+### T20.5 — Vision API Support
 **Status:** not started
 
 Allow the user to attach an image to a query and have it analysed by a
@@ -407,11 +409,21 @@ vision-capable model.
 **Routing logic (`src/orchestrator.py`):**
 - When `image is not None`, always route to at least `complex_sonnet`
   (Claude supports vision; small Ollama models generally do not).
-- Exception: if the active Ollama model is a known vision model
-  (`llava`, `moondream`, `minicpm-v`, etc.) and the tier is
-  `trivial_ollama` or `simple_ollama`, send to Ollama.
+- Exception: if the active Ollama model is a known vision model and the
+  tier is `trivial_ollama` or `simple_ollama`, send to Ollama instead.
 - Add an `_OLLAMA_VISION_MODELS` frozenset of known vision-capable model
   name prefixes.
+
+> **Note — Gemma 4 as preferred local vision model:**
+> Google's Gemma 4 is natively multimodal (text + vision) and available
+> via Ollama (`ollama pull gemma4:12b` or similar).  It is a strong
+> candidate to replace `sam860/deepseek-r1-0528-qwen3:8b` as the
+> `simple_ollama` model entirely — giving the local tier vision capability
+> at no extra cost (one model instead of two separate ones).
+> Include `"gemma4"` in `_OLLAMA_VISION_MODELS` from the outset.
+> The model evaluation and default-config update are handled in T20.1;
+> the vision routing logic here should be written to work correctly
+> whichever model is configured.
 
 **OpenRouter client changes (`src/openrouter_client.py`):**
 - `ask()` gains an optional `image: PIL.Image.Image | None = None`
@@ -435,7 +447,7 @@ Add unit tests in `tests/test_vision.py` (mock the API calls).
 
 ---
 
-### T20.5 — Data Analysis Tool (Polars + Matplotlib)
+### T20.6 — Data Analysis Tool (Polars + Matplotlib)
 **Status:** not started
 
 Implement `src/tools/data_analysis.py` — reads a CSV or Excel file (by
@@ -466,7 +478,7 @@ generates a chart.
   requires `openpyxl`.
 - Plots use `matplotlib.figure.Figure` (non-interactive backend —
   `matplotlib.use("Agg")` at module level to avoid display dependencies);
-  the resulting PNG is returned via `encode_image()` (T20.2).
+  the resulting PNG is returned via `encode_image()` (T20.3).
 - Summarise output is returned as a plain text string.
 - Register a `ToolDefinition` (Approach B, `default_enabled=True`,
   `min_tier="complex_sonnet"`, `category="files"`).
@@ -476,7 +488,7 @@ generates a chart.
 
 ---
 
-### T20.6 — Image Generation Tool
+### T20.7 — Image Generation Tool
 **Status:** not started
 
 Implement `src/tools/image_gen.py` — generates an image from a text
@@ -498,7 +510,7 @@ search if the local model is unavailable.
   back.
 - Generate at 512×512 with `num_inference_steps=4`, `guidance_scale=0.0`
   (SDXL-Turbo is guidance-free).
-- Return the image via `encode_image()` (T20.2).
+- Return the image via `encode_image()` (T20.3).
 
 **CC0 fallback (Openverse API):**
 - Query `https://api.openverse.org/v1/images/?q={prompt}&license=cc0`
@@ -540,6 +552,48 @@ def _image_gen_callable(args_json: str) -> bytes | str:
 
 ---
 
+### T20.1 — Gemma 4 Model Evaluation and Migration
+
+**Status:** not started
+**Recommended before:** T20.5 (vision routing will be written for the adopted model)
+
+Google's Gemma 4 is natively multimodal (text + vision) and available via
+Ollama.  This ticket evaluates it as a replacement for
+`sam860/deepseek-r1-0528-qwen3:8b` — potentially collapsing the two local
+models into one while simultaneously gaining vision capability for T20.5.
+
+**Evaluation steps:**
+
+1. Pull the candidate model and smoke-test routing accuracy against the
+   existing `test_router.py` fixtures:
+   ```bash
+   ollama pull gemma4:12b
+   uv run pytest tests/test_router.py -m integration
+   ```
+2. Run the full tool-calling suite with the new model to confirm Approach B
+   JSON extraction works (`test_openrouter_client.py` mocked, integration
+   tests live).
+3. Benchmark subjective response quality on a short set of `simple_ollama`
+   prompts (factual lookups, light reasoning).
+4. Confirm VRAM budget: Gemma 4 12B fp16 ≈ 8 GB; check this fits alongside
+   Whisper medium (~5 GB) on the target 16 GB GPU.
+
+**If adopted — required changes:**
+
+- `src/app.py`: update `OLLAMA_MODEL_DEFAULT` default string.
+- `src/router.py`: update the routing prompt / tier labels if needed.
+- `src/tools/vision.py` (T20.5): ensure `"gemma4"` is in
+  `_OLLAMA_VISION_MODELS` (already noted there).
+- `README.md`: update the model table (both the Ollama Setup section and
+  the architecture diagram string).
+- CLI `--ollama-model` help text: update the documented default.
+- `CLAUDE.md` Architecture section: update the model name.
+
+**If not adopted:** document the reasons in a short comment in `app.py`
+next to `OLLAMA_MODEL_DEFAULT` so the decision is not re-litigated.
+
+---
+
 ## Implementation Order Summary
 
 | Order | Phase | Tickets | Status |
@@ -564,7 +618,7 @@ def _image_gen_callable(args_json: str) -> bytes | str:
 | 17 | Minor Code Quality | T17.1 → T17.2 | complete |
 | 18 | RAG Memory | T18.1 → T18.6 | complete |
 | 19 | Tools | T19.1 → T19.20 | complete |
-| 20 | Extended Tools | T20.1 → T20.6 | not started |
+| 20 | Extended Tools | T20.1 → T20.7 | not started |
 
 ---
 
