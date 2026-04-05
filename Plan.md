@@ -515,7 +515,7 @@ receive the result, and continue reasoning before returning to the user.
 - Add unit tests in `tests/test_location.py` (mock HTTP calls)
 
 ### T19.12 — Date and Time Tool
-**Status:** not started
+**Status:** complete
 
 - Implement a `get_datetime(timezone: str | None = None) -> str` tool in
   `src/tools/datetime_tool.py`
@@ -678,7 +678,7 @@ receive the result, and continue reasoning before returning to the user.
 | 16 | Portability | T16.1 | complete |
 | 17 | Minor Code Quality | T17.1 → T17.2 | complete |
 | 18 | RAG Memory | T18.1 → T18.6 | complete |
-| 19 | Tools | T19.1 → T19.20 | in progress (T19.1–T19.11 complete) |
+| 19 | Tools | T19.1 → T19.20 | in progress (T19.1–T19.12 complete) |
 
 ---
 
