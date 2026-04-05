@@ -17,6 +17,7 @@ dependencies = [
     "scipy>=1.17.1",
     "sounddevice>=0.5.5",
     "torch>=2.11.0",
+    "trafilatura>=1.4.0",
 ]
 
 [tool.ruff]

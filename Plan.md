@@ -583,7 +583,7 @@ receive the result, and continue reasoning before returning to the user.
 - Add unit tests in `tests/test_wikipedia.py` (mock HTTP calls)
 
 ### T19.17 — URL Content Summariser
-**Status:** not started
+**Status:** complete
 
 - Implement `summarise_url(url: str) -> str` in `src/tools/url_reader.py`
 - Fetch the page content, extract readable text (use `trafilatura` or
@@ -678,7 +678,7 @@ receive the result, and continue reasoning before returning to the user.
 | 16 | Portability | T16.1 | complete |
 | 17 | Minor Code Quality | T17.1 → T17.2 | complete |
 | 18 | RAG Memory | T18.1 → T18.6 | complete |
-| 19 | Tools | T19.1 → T19.20 | in progress (T19.1–T19.16 complete) |
+| 19 | Tools | T19.1 → T19.20 | in progress (T19.1–T19.17 complete) |
 
 ---
 
