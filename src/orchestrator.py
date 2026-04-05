@@ -4,6 +4,7 @@ Composes OllamaRouter for complexity classification, OpenRouterClient for
 Claude responses, and a direct Ollama client for trivial and simple queries.
 """
 
+import inspect
 import json
 import logging
 from uuid import uuid4
@@ -221,6 +222,8 @@ class Orchestrator:
             to ``OpenRouterClient.ask()`` or ``_ollama_respond()``.
         """
 
+        session_id = self.session_id
+
         def _execute(name: str, arguments: str | dict) -> str:
             tools = REGISTRY.enabled_tools(active_names)
             tool = next((t for t in tools if t.name == name), None)
@@ -232,7 +235,11 @@ class Orchestrator:
                 else arguments
             )
             try:
-                result = tool.callable(args_str)
+                sig = inspect.signature(tool.callable)
+                kwargs: dict = {}
+                if "session_id" in sig.parameters:
+                    kwargs["session_id"] = session_id
+                result = tool.callable(args_str, **kwargs)
                 return (
                     result
                     if result is not None

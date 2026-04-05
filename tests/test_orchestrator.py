@@ -55,8 +55,8 @@ class TestOrchestratorRespond:
             mocker.ANY,
             "sonnet",
             mocker.ANY,
-            tools=None,
-            tool_executor=None,
+            tools=mocker.ANY,
+            tool_executor=mocker.ANY,
         )
         assert response == "A detailed answer."
 
@@ -71,8 +71,8 @@ class TestOrchestratorRespond:
             mocker.ANY,
             "opus",
             mocker.ANY,
-            tools=None,
-            tool_executor=None,
+            tools=mocker.ANY,
+            tool_executor=mocker.ANY,
         )
         assert response == "A highly detailed answer."
 

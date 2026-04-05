@@ -22,6 +22,7 @@ from src.router import OLLAMA_FAST_MODEL
 from src.speech_input import WhisperTranscriber
 from src.speech_output import KokoroSpeaker, check_kokoro_files
 from src.tools.registry import _TIER_RANK, REGISTRY
+from src.tools.reminders import REMINDER_STORE
 
 OLLAMA_MODEL_DEFAULT = "sam860/deepseek-r1-0528-qwen3:8b"
 
@@ -530,6 +531,40 @@ def build_app(
                 audio_input,
                 memory_status,
             ],
+        )
+
+        # ── Reminder timer ──────────────────────────────────────────────────
+        # Poll for due reminders every 10 seconds and inject them into the
+        # chat as assistant messages so the user sees them immediately.
+
+        def _check_reminders(history: list) -> tuple:
+            """Fire any due reminders into the chat history.
+
+            Args:
+                history: The current conversation history state.
+
+            Returns:
+                Updated ``(chatbot, history_state)`` tuple, or
+                ``gr.update()`` if no reminders are due.
+            """
+            due = REMINDER_STORE.get_due(session_id)
+            if not due:
+                return gr.update(), history
+            new_msgs = [
+                {
+                    "role": "assistant",
+                    "content": f"\u23f0 Reminder: {r.message}",
+                }
+                for r in due
+            ]
+            updated = list(history) + new_msgs
+            return updated, updated
+
+        reminder_timer = gr.Timer(value=10, active=True)
+        reminder_timer.tick(
+            fn=_check_reminders,
+            inputs=[history_state],
+            outputs=[chatbot, history_state],
         )
 
     return demo
