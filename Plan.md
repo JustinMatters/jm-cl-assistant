@@ -416,7 +416,7 @@ Implement `ToolRegistry` in `src/tools/registry.py`:
 - Add a test that disabling a tool removes its tier from the generated prompt
 
 ### T19.7 — Tool Toggle UI
-**Status:** not started
+**Status:** complete
 
 - On startup, query the registry for all registered tools and build a
   per-tool `gr.Checkbox` in the Gradio UI, using `default_enabled` for the

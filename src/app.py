@@ -21,6 +21,7 @@ from src.process_text import process_text
 from src.router import OLLAMA_FAST_MODEL
 from src.speech_input import WhisperTranscriber
 from src.speech_output import KokoroSpeaker, check_kokoro_files
+from src.tools.registry import _TIER_RANK, REGISTRY
 
 OLLAMA_MODEL_DEFAULT = "sam860/deepseek-r1-0528-qwen3:8b"
 
@@ -240,6 +241,73 @@ def build_app(
             outputs=memory_status,
         )
 
+        # ── Tools accordion ─────────────────────────────────────────────────
+        _all_tools = REGISTRY.all()
+        _max_rank = (
+            _TIER_RANK["complex_opus"]
+            if os.environ.get("OPENROUTER_API_KEY")
+            else _TIER_RANK["simple_ollama"]
+        )
+        _TIER_DISPLAY = {
+            "trivial_ollama": "Ollama (fast)",
+            "simple_ollama": "Ollama",
+            "complex_sonnet": "Claude Sonnet",
+            "complex_opus": "Claude Opus",
+        }
+
+        def _achievable(tool) -> bool:
+            return _TIER_RANK.get(tool.min_tier, 0) <= _max_rank
+
+        _init_enabled = {
+            t.name for t in _all_tools if t.default_enabled and _achievable(t)
+        }
+        _tool_count = len(_all_tools)
+        tools_state = gr.State(_init_enabled)
+
+        with gr.Accordion("Tools", open=False):
+            tools_status = gr.Markdown(
+                f"Tools: {len(_init_enabled)} / {_tool_count} enabled"
+            )
+            _by_category: dict[str, list] = {}
+            for _t in _all_tools:
+                _by_category.setdefault(_t.category, []).append(_t)
+
+            _checkboxes: dict[str, gr.Checkbox] = {}
+            for _cat, _cat_tools in _by_category.items():
+                gr.Markdown(f"**{_cat}**")
+                for _tool in _cat_tools:
+                    _ok = _achievable(_tool)
+                    if _ok:
+                        _lbl = _tool.label
+                    else:
+                        _tier_name = _TIER_DISPLAY.get(
+                            _tool.min_tier, _tool.min_tier
+                        )
+                        _lbl = (
+                            f"{_tool.label} — requires {_tier_name} or higher"
+                        )
+                    _checkboxes[_tool.name] = gr.Checkbox(
+                        value=_tool.default_enabled and _ok,
+                        label=_lbl,
+                        interactive=_ok,
+                    )
+
+        def _make_tool_toggle(name: str):
+            def _fn(val: bool, state: set) -> tuple[set, str]:
+                new = (state | {name}) if val else (state - {name})
+                return new, f"Tools: {len(new)} / {_tool_count} enabled"
+
+            return _fn
+
+        for _name, _cb in _checkboxes.items():
+            _tool_def = next(t for t in _all_tools if t.name == _name)
+            if _achievable(_tool_def):
+                _cb.change(
+                    fn=_make_tool_toggle(_name),
+                    inputs=[_cb, tools_state],
+                    outputs=[tools_state, tools_status],
+                )
+
         # ── Mode switching ──────────────────────────────────────────────────
 
         def toggle_input_mode(mode):
@@ -276,7 +344,9 @@ def build_app(
 
         # ── Text input flow ─────────────────────────────────────────────────
 
-        def handle_text(query, history, out_mode, show, voice, mem_enabled):
+        def handle_text(
+            query, history, out_mode, show, voice, mem_enabled, tools
+        ):
             """Handle a text query submitted via the text input or send button.
 
             Args:
@@ -286,6 +356,7 @@ def build_app(
                 show: Whether to show ``<think>`` tags in the response.
                 voice: Kokoro voice ID for TTS synthesis.
                 mem_enabled: Whether memory reads/writes are active.
+                tools: Set of currently enabled tool names from the UI.
 
             Returns:
                 A tuple of ``(display_history, history_state, cleared_input,
@@ -303,6 +374,7 @@ def build_app(
                 speaker,
                 lambda: orchestrator.last_backend,
                 memory_enabled=mem_enabled,
+                enabled_tools=tools,
             )
             return (
                 display_history,
@@ -321,6 +393,7 @@ def build_app(
                 show_think,
                 voice_selector,
                 memory_checkbox,
+                tools_state,
             ],
             outputs=[
                 chatbot,
@@ -339,6 +412,7 @@ def build_app(
                 show_think,
                 voice_selector,
                 memory_checkbox,
+                tools_state,
             ],
             outputs=[
                 chatbot,
@@ -358,7 +432,7 @@ def build_app(
         # is not interrupted.
 
         def handle_audio(
-            audio_data, history, out_mode, show, voice, mem_enabled
+            audio_data, history, out_mode, show, voice, mem_enabled, tools
         ):
             """Handle a microphone recording submitted via the audio input.
 
@@ -375,6 +449,7 @@ def build_app(
                 show: Whether to show ``<think>`` tags in the response.
                 voice: Kokoro voice ID for TTS synthesis.
                 mem_enabled: Whether memory reads/writes are active.
+                tools: Set of currently enabled tool names from the UI.
 
             Returns:
                 A tuple of ``(chatbot, history_state, audio_output,
@@ -400,6 +475,7 @@ def build_app(
                     orchestrator,
                     speaker,
                     memory_enabled=mem_enabled,
+                    enabled_tools=tools,
                 )
                 return (
                     display_history,
@@ -432,6 +508,7 @@ def build_app(
                 show_think,
                 voice_selector,
                 memory_checkbox,
+                tools_state,
             ],
             outputs=[
                 chatbot,

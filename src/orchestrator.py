@@ -79,6 +79,7 @@ class Orchestrator:
         query: str,
         history: list,
         memory_enabled: bool = True,
+        enabled_tools: set[str] | None = None,
     ) -> tuple[str, list]:
         """Generate a response and update the conversation history.
 
@@ -92,6 +93,10 @@ class Orchestrator:
             memory_enabled: When False, the memory store is neither read
               from (no context injection) nor written to (no recording)
               for this call. Allows the user to toggle memory mid-session.
+            enabled_tools: Set of tool names currently active in the UI.
+              When provided, overrides the registry's ``default_enabled``
+              flags so the UI state is honoured.  Pass ``None`` to fall
+              back to per-tool defaults (used in tests and CLI mode).
 
         Returns:
             A tuple of ``(response_text, updated_history)`` where
@@ -112,8 +117,11 @@ class Orchestrator:
             else list(history)
         )
         # Build the active tool set for this turn.
-        # T19.7 will wire this to per-tool UI checkboxes; for now use defaults.
-        active_names = {t.name for t in REGISTRY.all() if t.default_enabled}
+        # Use UI-provided set when available; fall back to registry defaults.
+        if enabled_tools is not None:
+            active_names = enabled_tools
+        else:
+            active_names = {t.name for t in REGISTRY.all() if t.default_enabled}
 
         classification = self._router.classify(query, active_names)
 
