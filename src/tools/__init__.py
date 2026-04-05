@@ -16,3 +16,4 @@ from src.tools import dictionary as _dictionary  # noqa: F401
 from src.tools import location as _location  # noqa: F401
 from src.tools import weather as _weather  # noqa: F401
 from src.tools import web_search as _web_search  # noqa: F401
+from src.tools import wikipedia as _wikipedia  # noqa: F401

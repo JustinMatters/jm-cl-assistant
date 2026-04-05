@@ -145,6 +145,8 @@ class ToolRegistry:
         for t in self._tools.values():
             if t.name not in enabled_names:
                 continue
+            if t.approach != "A":
+                continue
             examples_str = ", ".join(f"'{e}'" for e in t.examples)
             lines.append(
                 f"  {t.router_tier:<14} — {t.description}\n"
