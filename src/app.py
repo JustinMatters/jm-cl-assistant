@@ -293,6 +293,19 @@ def build_app(
                     )
 
         def _make_tool_toggle(name: str):
+            """Return a Gradio change callback for the named tool's checkbox.
+
+            The returned function updates the enabled-tools state set and
+            the tools status Markdown string when the checkbox value changes.
+
+            Args:
+                name: Tool name to add to or remove from the enabled set.
+
+            Returns:
+                A ``(val, state) -> (new_state, status_str)`` callable
+                suitable for wiring to a ``gr.Checkbox.change`` event.
+            """
+
             def _fn(val: bool, state: set) -> tuple[set, str]:
                 new = (state | {name}) if val else (state - {name})
                 return new, f"Tools: {len(new)} / {_tool_count} enabled"

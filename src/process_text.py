@@ -36,6 +36,10 @@ def process_text(
         last_backend_fn: Zero-argument callable that returns the backend
           label string used to prefix the assistant reply (e.g.
           ``lambda: orchestrator.last_backend``).
+        memory_enabled: When ``False``, memory reads and writes are
+          skipped for this call.
+        enabled_tools: Set of tool names currently active in the UI.
+          ``None`` falls back to per-tool ``default_enabled`` flags.
 
     Returns:
         ``(display_history, history_state, audio_out)`` — the same tuple

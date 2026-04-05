@@ -53,6 +53,10 @@ def process_audio(
         transcriber: ``WhisperTranscriber`` instance.
         orchestrator: ``Orchestrator`` instance.
         speaker: ``KokoroSpeaker`` instance.
+        memory_enabled: When ``False``, memory reads and writes are
+          skipped for this call.
+        enabled_tools: Set of tool names currently active in the UI.
+          ``None`` falls back to per-tool ``default_enabled`` flags.
 
     Returns:
         ``(display_history, history_state, audio_out)`` — the same tuple
