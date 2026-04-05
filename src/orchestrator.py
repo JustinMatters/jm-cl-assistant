@@ -69,6 +69,7 @@ class Orchestrator:
                     "continuing without memory",
                     exc,
                 )
+        self._pending_execution: dict | None = None
         self._backend_labels = {
             "trivial_ollama": f"Ollama: {fast_model.split('/')[-1]}",
             "simple_ollama": f"Ollama: {ollama_model.split('/')[-1]}",
@@ -223,6 +224,7 @@ class Orchestrator:
         """
 
         session_id = self.session_id
+        orchestrator = self
 
         def _execute(name: str, arguments: str | dict) -> str:
             tools = REGISTRY.enabled_tools(active_names)
@@ -234,6 +236,22 @@ class Orchestrator:
                 if isinstance(arguments, dict)
                 else arguments
             )
+            if tool.requires_confirmation:
+                # Store pending execution for the UI to surface a modal.
+                try:
+                    code = json.loads(args_str).get("code", "")
+                except Exception:
+                    code = args_str
+                orchestrator._pending_execution = {
+                    "tool": tool,
+                    "args_str": args_str,
+                    "code": code,
+                }
+                return (
+                    "Code execution requires user approval. "
+                    "The user has been shown the code and must "
+                    "approve before it can run."
+                )
             try:
                 sig = inspect.signature(tool.callable)
                 kwargs: dict = {}
@@ -249,6 +267,32 @@ class Orchestrator:
                 return f"Error executing {name}: {exc}"
 
         return _execute
+
+    def confirm_pending(self) -> str:
+        """Execute the stored pending code and clear the pending state.
+
+        Returns:
+            The code's output, or an error string if execution fails.
+        """
+        if self._pending_execution is None:
+            return "No pending code execution."
+        tool = self._pending_execution["tool"]
+        args_str = self._pending_execution["args_str"]
+        self._pending_execution = None
+        try:
+            result = tool.callable(args_str)
+            return result if result is not None else "(no output)"
+        except Exception as exc:
+            return f"Execution error: {exc}"
+
+    def cancel_pending(self) -> str:
+        """Discard the stored pending code without executing it.
+
+        Returns:
+            A cancellation confirmation string.
+        """
+        self._pending_execution = None
+        return "Code execution cancelled."
 
     def _ollama_respond(
         self,

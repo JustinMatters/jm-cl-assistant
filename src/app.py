@@ -26,6 +26,25 @@ from src.tools.reminders import REMINDER_STORE
 
 OLLAMA_MODEL_DEFAULT = "sam860/deepseek-r1-0528-qwen3:8b"
 
+_MODAL_CSS = """
+#code-confirm-modal {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    z-index: 1000 !important;
+    background: var(--background-fill-primary) !important;
+    border: 2px solid var(--border-color-primary) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 48px rgba(0, 0, 0, 0.7) !important;
+    padding: 1.5rem !important;
+    width: 680px !important;
+    max-width: 92vw !important;
+    max-height: 80vh !important;
+    overflow-y: auto !important;
+}
+"""
+
 
 def _ensure_ollama(max_wait: int = 10) -> str | None:
     """Start Ollama if it is not reachable, then wait for it to come up.
@@ -144,7 +163,7 @@ def build_app(
     transcriber = WhisperTranscriber(model=whisper_model)
     speaker = KokoroSpeaker()
 
-    with gr.Blocks(title="JM Assistant") as demo:
+    with gr.Blocks(title="JM Assistant", css=_MODAL_CSS) as demo:
         with gr.Row():
             gr.Markdown("# JM Assistant")
             dark_toggle = gr.Button("🌙 Dark / ☀️ Light", scale=0, min_width=160)
@@ -356,6 +375,62 @@ def build_app(
             outputs=chatbot,
         )
 
+        # ── Code execution confirmation modal ───────────────────────────────
+        # Components are created here (before the input handlers that
+        # reference them).  Both start hidden; handle_text / handle_audio
+        # show them when the orchestrator has a pending code execution.
+
+        _OVERLAY_HTML = (
+            '<div style="position:fixed;inset:0;'
+            'background:rgba(0,0,0,0.55);z-index:999"></div>'
+        )
+        modal_overlay = gr.HTML(value=_OVERLAY_HTML, visible=False)
+
+        with gr.Column(
+            visible=False, elem_id="code-confirm-modal"
+        ) as modal_panel:
+            gr.Markdown("### Code Execution Request")
+            gr.Markdown(
+                "Review the code below, then **Approve** to run it "
+                "or **Deny** to cancel."
+            )
+            modal_code = gr.Code(
+                language="python",
+                interactive=False,
+                label="Pending code",
+            )
+            with gr.Row():
+                approve_btn = gr.Button("Approve", variant="primary")
+                deny_btn = gr.Button("Deny", variant="stop")
+
+        _MODAL_OUTPUTS = [modal_overlay, modal_panel, modal_code]
+
+        def _show_modal() -> tuple:
+            """Return gr.update tuples to make the modal visible.
+
+            Returns hidden updates when no execution is pending.
+            """
+            pending = orchestrator._pending_execution
+            if pending is None:
+                return (
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                    gr.update(value=""),
+                )
+            return (
+                gr.update(visible=True),
+                gr.update(visible=True),
+                gr.update(value=pending["code"]),
+            )
+
+        def _hide_modal() -> tuple:
+            """Return gr.update tuples to hide the modal."""
+            return (
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(value=""),
+            )
+
         # ── Text input flow ─────────────────────────────────────────────────
 
         def handle_text(
@@ -374,10 +449,17 @@ def build_app(
 
             Returns:
                 A tuple of ``(display_history, history_state, cleared_input,
-                audio_out, memory_status)`` suitable for Gradio's outputs.
+                audio_out, memory_status, overlay, modal, code)`` suitable
+                for Gradio's outputs.
             """
             if not query.strip():
-                return history, history, "", None, _memory_status(mem_enabled)
+                return (
+                    history,
+                    history,
+                    "",
+                    None,
+                    _memory_status(mem_enabled),
+                ) + _hide_modal()
             display_history, updated_history, audio_out = process_text(
                 query,
                 history,
@@ -396,45 +478,34 @@ def build_app(
                 "",
                 audio_out,
                 _memory_status(mem_enabled),
-            )
+            ) + _show_modal()
+
+        _text_inputs = [
+            text_input,
+            history_state,
+            output_mode,
+            show_think,
+            voice_selector,
+            memory_checkbox,
+            tools_state,
+        ]
+        _text_outputs = [
+            chatbot,
+            history_state,
+            text_input,
+            audio_output,
+            memory_status,
+        ] + _MODAL_OUTPUTS
 
         submit_btn.click(
             handle_text,
-            inputs=[
-                text_input,
-                history_state,
-                output_mode,
-                show_think,
-                voice_selector,
-                memory_checkbox,
-                tools_state,
-            ],
-            outputs=[
-                chatbot,
-                history_state,
-                text_input,
-                audio_output,
-                memory_status,
-            ],
+            inputs=_text_inputs,
+            outputs=_text_outputs,
         )
         text_input.submit(
             handle_text,
-            inputs=[
-                text_input,
-                history_state,
-                output_mode,
-                show_think,
-                voice_selector,
-                memory_checkbox,
-                tools_state,
-            ],
-            outputs=[
-                chatbot,
-                history_state,
-                text_input,
-                audio_output,
-                memory_status,
-            ],
+            inputs=_text_inputs,
+            outputs=_text_outputs,
         )
 
         # ── Speech input flow ───────────────────────────────────────────────
@@ -467,7 +538,8 @@ def build_app(
 
             Returns:
                 A tuple of ``(chatbot, history_state, audio_output,
-                audio_input, memory_status)`` suitable for Gradio's outputs.
+                audio_input, memory_status, overlay, modal, code)``
+                suitable for Gradio's outputs.
             """
             if audio_data is None:
                 # Re-fired by our own reset — leave everything unchanged.
@@ -477,7 +549,7 @@ def build_app(
                     gr.update(),
                     gr.update(),
                     gr.update(),
-                )
+                ) + _hide_modal()
             try:
                 display_history, updated_history, audio_out = process_audio(
                     audio_data,
@@ -497,7 +569,7 @@ def build_app(
                     audio_out,
                     gr.update(value=None),  # reset recorder
                     _memory_status(mem_enabled),
-                )
+                ) + _show_modal()
             except Exception as exc:  # noqa: BLE001
                 err_display = list(history) + [
                     {
@@ -511,7 +583,7 @@ def build_app(
                     None,
                     gr.update(value=None),  # reset recorder
                     _memory_status(mem_enabled),
-                )
+                ) + _hide_modal()
 
         audio_input.change(
             handle_audio,
@@ -530,7 +602,57 @@ def build_app(
                 audio_output,
                 audio_input,
                 memory_status,
-            ],
+            ]
+            + _MODAL_OUTPUTS,
+        )
+
+        # ── Modal button handlers ───────────────────────────────────────────
+
+        def handle_approve(history: list) -> tuple:
+            """Execute pending code and append the result to the chat.
+
+            Args:
+                history: Current conversation history state.
+
+            Returns:
+                Updated ``(chatbot, history_state, overlay, modal,
+                code)`` tuple.
+            """
+            result = orchestrator.confirm_pending()
+            msg = {
+                "role": "assistant",
+                "content": f"**Code output:**\n```\n{result}\n```",
+            }
+            updated = list(history) + [msg]
+            return (updated, updated) + _hide_modal()
+
+        def handle_deny(history: list) -> tuple:
+            """Cancel pending code and append a cancellation notice.
+
+            Args:
+                history: Current conversation history state.
+
+            Returns:
+                Updated ``(chatbot, history_state, overlay, modal,
+                code)`` tuple.
+            """
+            orchestrator.cancel_pending()
+            msg = {
+                "role": "assistant",
+                "content": "Code execution cancelled.",
+            }
+            updated = list(history) + [msg]
+            return (updated, updated) + _hide_modal()
+
+        approve_btn.click(
+            handle_approve,
+            inputs=[history_state],
+            outputs=[chatbot, history_state] + _MODAL_OUTPUTS,
+        )
+        deny_btn.click(
+            handle_deny,
+            inputs=[history_state],
+            outputs=[chatbot, history_state] + _MODAL_OUTPUTS,
         )
 
         # ── Reminder timer ──────────────────────────────────────────────────

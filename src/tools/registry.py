@@ -67,6 +67,9 @@ class ToolDefinition:
           awaited.
         parameters_schema: OpenAI-compatible JSON schema for Approach B
           tools; ``None`` for Approach A tools.
+        requires_confirmation: When ``True``, the orchestrator pauses
+          before executing this tool and surfaces a UI confirmation
+          dialog.  The callable is only invoked after the user approves.
     """
 
     name: str
@@ -81,6 +84,7 @@ class ToolDefinition:
     category: str = "general"
     is_async: bool = False
     parameters_schema: dict | None = None
+    requires_confirmation: bool = False
 
 
 class ToolRegistry:
