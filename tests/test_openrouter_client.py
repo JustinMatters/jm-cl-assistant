@@ -322,3 +322,49 @@ class TestToolUseLoop:
         client.ask("q", "sonnet", [], tools=[], tool_executor=lambda n, a: "")
         _, kwargs = mock_create.call_args
         assert "tools" not in kwargs
+
+
+class TestStreamAskErrors:
+    """Test stream_ask error handler branches."""
+
+    def _make_client(self, mocker):
+        mocker.patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"})
+        mocker.patch("openai.OpenAI")
+        return OpenRouterClient()
+
+    def test_auth_error_yields_message(self, mocker):
+        client = self._make_client(mocker)
+        client._client.chat.completions.create.side_effect = (
+            openai.AuthenticationError(
+                "auth", response=mocker.MagicMock(), body={}
+            )
+        )
+        chunks = list(client.stream_ask("hi", "sonnet", []))
+        assert len(chunks) == 1
+        assert "authentication failed" in chunks[0]
+
+    def test_rate_limit_error_yields_message(self, mocker):
+        client = self._make_client(mocker)
+        client._client.chat.completions.create.side_effect = (
+            openai.RateLimitError("rate", response=mocker.MagicMock(), body={})
+        )
+        chunks = list(client.stream_ask("hi", "sonnet", []))
+        assert any("rate limit" in c for c in chunks)
+
+    def test_connection_error_yields_message(self, mocker):
+        client = self._make_client(mocker)
+        client._client.chat.completions.create.side_effect = (
+            openai.APIConnectionError(request=mocker.MagicMock())
+        )
+        chunks = list(client.stream_ask("hi", "sonnet", []))
+        assert any("unreachable" in c for c in chunks)
+
+    def test_api_status_error_yields_message(self, mocker):
+        client = self._make_client(mocker)
+        mock_response = mocker.MagicMock()
+        mock_response.status_code = 500
+        client._client.chat.completions.create.side_effect = (
+            openai.APIStatusError("err", response=mock_response, body={})
+        )
+        chunks = list(client.stream_ask("hi", "sonnet", []))
+        assert any("500" in c for c in chunks)

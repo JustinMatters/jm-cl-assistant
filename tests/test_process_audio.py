@@ -10,6 +10,7 @@ import pytest
 
 process_audio_module = pytest.importorskip("src.process_audio")
 process_audio = process_audio_module.process_audio
+stream_process_audio = process_audio_module.stream_process_audio
 _audio_err = process_audio_module._audio_err
 
 
@@ -450,3 +451,87 @@ class TestProcessAudioShowThink:
         spoken_text = s.synthesize.call_args.args[0]
         assert "<think>" not in spoken_text
         assert "Spoken" in spoken_text
+
+
+# ── stream_process_audio guard branches ──────────────────────────────────────
+
+
+def _make_stream_mocks(mocker, transcription="hello"):
+    transcriber = mocker.MagicMock()
+    transcriber.transcribe.return_value = transcription
+    orchestrator = mocker.MagicMock()
+    orchestrator.last_backend = "ollama"
+    orchestrator.last_usage = None
+    orchestrator.last_cost = 0.0
+    orchestrator.session_cost = 0.0
+    speaker = mocker.MagicMock()
+    return transcriber, orchestrator, speaker
+
+
+class TestStreamProcessAudioGuards:
+    def test_none_audio_data_yields_nothing(self, mocker):
+        t, o, s = _make_stream_mocks(mocker)
+        results = list(
+            stream_process_audio(None, [], "text", True, "v", t, o, s)
+        )
+        assert results == []
+
+    def test_empty_array_yields_nothing(self, mocker):
+        t, o, s = _make_stream_mocks(mocker)
+        audio = (16000, np.array([], dtype=np.int16))
+        results = list(
+            stream_process_audio(audio, [], "text", True, "v", t, o, s)
+        )
+        assert results == []
+
+    def test_invalid_sample_rate_yields_error(self, mocker):
+        t, o, s = _make_stream_mocks(mocker)
+        audio = (0, np.ones(100, dtype=np.int16))
+        results = list(
+            stream_process_audio(audio, [], "text", True, "v", t, o, s)
+        )
+        assert len(results) == 1
+        display, hist, audio_out = results[0]
+        assert any(
+            "invalid sample rate" in m.get("content", "") for m in display
+        )
+        assert hist == []
+        assert audio_out is None
+
+    def test_negative_sample_rate_yields_error(self, mocker):
+        t, o, s = _make_stream_mocks(mocker)
+        audio = (-1, np.ones(100, dtype=np.int16))
+        results = list(
+            stream_process_audio(audio, [], "text", True, "v", t, o, s)
+        )
+        assert len(results) == 1
+        display, _, _ = results[0]
+        assert any(
+            "invalid sample rate" in m.get("content", "") for m in display
+        )
+
+    def test_transcription_exception_yields_error(self, mocker):
+        t, o, s = _make_stream_mocks(mocker)
+        t.transcribe.side_effect = RuntimeError("mic broke")
+        audio = (16000, np.ones(1000, dtype=np.int16))
+        results = list(
+            stream_process_audio(audio, [], "text", True, "v", t, o, s)
+        )
+        assert len(results) == 1
+        display, hist, audio_out = results[0]
+        assert any(
+            "transcription failed" in m.get("content", "") for m in display
+        )
+
+    def test_empty_transcription_yields_error(self, mocker):
+        t, o, s = _make_stream_mocks(mocker)
+        t.transcribe.return_value = "   "
+        audio = (16000, np.ones(1000, dtype=np.int16))
+        results = list(
+            stream_process_audio(audio, [], "text", True, "v", t, o, s)
+        )
+        assert len(results) == 1
+        display, _hist, _audio = results[0]
+        assert any(
+            "could not understand" in m.get("content", "") for m in display
+        )

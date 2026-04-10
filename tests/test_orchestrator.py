@@ -439,3 +439,35 @@ class TestConvertDispatch:
         call_args = mock_dispatch.call_args
         assert call_args.args[0] == "convert"
         assert call_args.args[1] == "convert 5 miles to km"
+
+
+class TestConfirmAndCancelPending:
+    def _make_orch(self, mocker):
+        mocker.patch("src.orchestrator.OpenRouterClient")
+        mocker.patch("src.orchestrator.OllamaRouter")
+        return Orchestrator(memory_enabled=False)
+
+    def test_confirm_pending_when_none_returns_message(self, mocker):
+        orch = self._make_orch(mocker)
+        result = orch.confirm_pending()
+        assert result == "No pending code execution."
+
+    def test_confirm_pending_execution_error_returns_message(self, mocker):
+        orch = self._make_orch(mocker)
+        bad_tool = mocker.MagicMock()
+        bad_tool.callable.side_effect = RuntimeError("sandbox exploded")
+        orch._pending_execution = {
+            "tool": bad_tool,
+            "args_str": '{"code": "1+1"}',
+            "code": "1+1",
+        }
+        result = orch.confirm_pending()
+        assert "Execution error" in result
+        assert "sandbox exploded" in result
+
+    def test_cancel_pending_clears_state(self, mocker):
+        orch = self._make_orch(mocker)
+        orch._pending_execution = {"tool": None, "args_str": "", "code": ""}
+        result = orch.cancel_pending()
+        assert result == "Code execution cancelled."
+        assert orch._pending_execution is None

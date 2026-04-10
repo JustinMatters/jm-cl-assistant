@@ -284,7 +284,7 @@ User Input (text | Whisper speech)
 | 25 | Conversation Export | T25.1 → T25.3 | complete |
 | 26 | Token and Cost Display | T26.1 → T26.5 | complete |
 | 27 | Session Persistence | T27.1 → T27.4 | complete |
-| 28 | Coverage Report | T28.1 → T28.3 | not started |
+| 28 | Coverage Report | T28.1 → T28.3 | complete |
 | 29 | Docker Support | T29.1 → T29.3 | not started |
 
 ---
@@ -539,14 +539,14 @@ measured.  This phase installs `pytest-cov`, generates a baseline report, and
 adds targeted tests to fill the most significant gaps.
 
 ### T28.1 — Add pytest-cov and baseline report
-**Status:** not started
+**Status:** complete
 
 `uv add --dev pytest-cov`.  Run `uv run pytest --cov=src --cov-report=term-missing -m "not integration" -q`
 and record the baseline line coverage percentage.  Identify the top five
 uncovered modules or functions by uncovered-line count.
 
 ### T28.2 — Fill coverage gaps
-**Status:** not started
+**Status:** complete
 
 Write targeted tests for the identified gaps.  Focus on branches and error
 paths that are hard to hit in normal use (e.g. malformed tool arguments,
@@ -554,7 +554,7 @@ Ollama connection failures in specific code paths, edge cases in helpers).
 Aim for ≥ 85% overall line coverage.
 
 ### T28.3 — Add coverage to CI
-**Status:** not started
+**Status:** complete
 
 Update `.github/workflows/ci.yml` to run pytest with `--cov=src
 --cov-fail-under=85` so coverage regressions fail the build.

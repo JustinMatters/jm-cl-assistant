@@ -46,5 +46,5 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Run tests
-        run: uv run pytest -m "not integration" || [ $? -eq 5 ]
+      - name: Run tests with coverage
+        run: uv run pytest --cov=src --cov-fail-under=85 -m "not integration" || [ $? -eq 5 ]

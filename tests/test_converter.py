@@ -1,6 +1,6 @@
 """Unit tests for src/tools/converter.py."""
 
-from src.tools.converter import convert
+from src.tools.converter import _handle_convert_query, convert
 
 
 class TestLength:
@@ -119,3 +119,32 @@ class TestErrorHandling:
     def test_incompatible_units_different_dimensions(self):
         result = convert(1, "second", "kilogram")
         assert "Error" in result
+
+    def test_generic_exception_returns_error(self, mocker):
+        mocker.patch(
+            "src.tools.converter._ureg.Quantity",
+            side_effect=RuntimeError("unexpected pint failure"),
+        )
+        result = convert(1, "meter", "foot")
+        assert result.startswith("Error:")
+        assert "unexpected pint failure" in result
+
+
+class TestHandleConvertQuery:
+    def test_no_match_returns_none(self):
+        assert _handle_convert_query("what is the weather?") is None
+
+    def test_matching_query_returns_result(self):
+        result = _handle_convert_query("convert 5 miles to km")
+        assert result is not None
+        assert "8.04" in result
+
+    def test_error_conversion_returns_none(self):
+        # invalid units → convert() returns "Error:…" → handler returns None
+        result = _handle_convert_query("convert 5 bananas to apples")
+        assert result is None
+
+    def test_integer_query_parsed(self):
+        result = _handle_convert_query("10 kg in lb")
+        assert result is not None
+        assert "22" in result

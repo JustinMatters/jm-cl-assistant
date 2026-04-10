@@ -1,4 +1,6 @@
 import io
+import logging
+import sys
 import wave
 
 import numpy as np
@@ -7,6 +9,9 @@ import pytest
 helpers_module = pytest.importorskip("src.helpers")
 strip_markdown = helpers_module.strip_markdown
 strip_think_tags = helpers_module.strip_think_tags
+suppress_connection_reset_errors = (
+    helpers_module.suppress_connection_reset_errors
+)
 to_wav_bytes = helpers_module.to_wav_bytes
 
 
@@ -148,3 +153,47 @@ class TestToWavBytes:
         with wave.open(io.BytesIO(result), "rb") as wf:
             assert wf.getnchannels() == 1
             assert wf.getnframes() == 100
+
+
+class TestSuppressConnectionResetErrors:
+    def test_installs_filter_on_asyncio_logger(self):
+        logger = logging.getLogger("asyncio")
+        before = len(logger.filters)
+        suppress_connection_reset_errors()
+        assert len(logger.filters) > before
+
+    def test_filter_blocks_connection_reset_error(self):
+        suppress_connection_reset_errors()
+        logger = logging.getLogger("asyncio")
+        try:
+            raise ConnectionResetError("gone")
+        except ConnectionResetError:
+            exc_info = sys.exc_info()
+        record = logging.LogRecord(
+            name="asyncio",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="test",
+            args=(),
+            exc_info=exc_info,
+        )
+        assert not all(f.filter(record) for f in logger.filters)
+
+    def test_filter_passes_other_exceptions(self):
+        suppress_connection_reset_errors()
+        logger = logging.getLogger("asyncio")
+        try:
+            raise ValueError("not a reset")
+        except ValueError:
+            exc_info = sys.exc_info()
+        record = logging.LogRecord(
+            name="asyncio",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="test",
+            args=(),
+            exc_info=exc_info,
+        )
+        assert all(f.filter(record) for f in logger.filters)
