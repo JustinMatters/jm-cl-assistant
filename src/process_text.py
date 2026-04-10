@@ -18,6 +18,8 @@ def process_text(
     speaker,
     last_backend_fn,
     memory_enabled: bool = True,
+    enabled_tools: set | None = None,
+    image=None,
 ) -> tuple[list, list, bytes | None]:
     """Dispatch a text query and return updated history and optional audio.
 
@@ -35,6 +37,10 @@ def process_text(
         last_backend_fn: Zero-argument callable that returns the backend
           label string used to prefix the assistant reply (e.g.
           ``lambda: orchestrator.last_backend``).
+        memory_enabled: When ``False``, memory reads and writes are
+          skipped for this call.
+        enabled_tools: Set of tool names currently active in the UI.
+          ``None`` falls back to per-tool ``default_enabled`` flags.
 
     Returns:
         ``(display_history, history_state, audio_out)`` — the same tuple
@@ -44,7 +50,11 @@ def process_text(
     """
     try:
         response, updated_history = orchestrator.respond(
-            query, history, memory_enabled=memory_enabled
+            query,
+            history,
+            memory_enabled=memory_enabled,
+            enabled_tools=enabled_tools,
+            image=image,
         )
         content = response if show else strip_think_tags(response)
         display_history = list(updated_history)

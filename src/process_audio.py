@@ -39,6 +39,8 @@ def process_audio(
     orchestrator,
     speaker,
     memory_enabled: bool = True,
+    enabled_tools: set | None = None,
+    image=None,
 ) -> tuple[list, list, bytes | None]:
     """Validate, transcribe, and respond to audio input.
 
@@ -52,6 +54,10 @@ def process_audio(
         transcriber: ``WhisperTranscriber`` instance.
         orchestrator: ``Orchestrator`` instance.
         speaker: ``KokoroSpeaker`` instance.
+        memory_enabled: When ``False``, memory reads and writes are
+          skipped for this call.
+        enabled_tools: Set of tool names currently active in the UI.
+          ``None`` falls back to per-tool ``default_enabled`` flags.
 
     Returns:
         ``(display_history, history_state, audio_out)`` — the same tuple
@@ -113,7 +119,11 @@ def process_audio(
     # ── Orchestrator dispatch ─────────────────────────────────────────────
     try:
         response, updated_history = orchestrator.respond(
-            query, history, memory_enabled=memory_enabled
+            query,
+            history,
+            memory_enabled=memory_enabled,
+            enabled_tools=enabled_tools,
+            image=image,
         )
     except ConnectionError:
         return (

@@ -1,8 +1,45 @@
+import json
+
 import openai
 import pytest
 
 openrouter_module = pytest.importorskip("src.openrouter_client")
 OpenRouterClient = openrouter_module.OpenRouterClient
+
+
+def _tool_response(mocker, name, args_dict, call_id="call_1"):
+    """Build a mock API response with a single tool_call."""
+    tc = mocker.MagicMock()
+    tc.id = call_id
+    tc.function.name = name
+    tc.function.arguments = json.dumps(args_dict)
+
+    msg = mocker.MagicMock()
+    msg.content = None
+    msg.tool_calls = [tc]
+
+    choice = mocker.MagicMock()
+    choice.finish_reason = "tool_calls"
+    choice.message = msg
+
+    resp = mocker.MagicMock()
+    resp.choices = [choice]
+    return resp
+
+
+def _text_response(mocker, content):
+    """Build a mock API response with a plain text reply."""
+    msg = mocker.MagicMock()
+    msg.content = content
+
+    choice = mocker.MagicMock()
+    choice.finish_reason = "stop"
+    choice.message = msg
+
+    resp = mocker.MagicMock()
+    resp.choices = [choice]
+    return resp
+
 
 SONNET_MODEL_ID = "anthropic/claude-sonnet-4-6"
 OPUS_MODEL_ID = "anthropic/claude-opus-4-6"
@@ -143,3 +180,145 @@ class TestOpenRouterClientErrorHandling:
         client = OpenRouterClient()
         result = client.ask("question", "sonnet", [])
         assert "503" in result
+
+
+class TestToolUseLoop:
+    """Tests for the Approach B agentic tool-use loop in ask()."""
+
+    def _make_client(self, mocker):
+        mocker.patch("src.openrouter_client.openai.OpenAI")
+        return OpenRouterClient()
+
+    def _mock_create(self, mocker):
+        mock_openai = mocker.patch("src.openrouter_client.openai.OpenAI")
+        return mock_openai.return_value.chat.completions.create
+
+    def test_no_tools_kwarg_behaves_as_before(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.return_value.choices[0].message.content = "answer"
+        client = OpenRouterClient()
+        result = client.ask("q", "sonnet", [])
+        assert result == "answer"
+
+    def test_tools_schema_passed_to_api(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.return_value = _text_response(mocker, "done")
+        schemas = [{"type": "function", "function": {"name": "calc"}}]
+        client = OpenRouterClient()
+        client.ask(
+            "q", "sonnet", [], tools=schemas, tool_executor=lambda n, a: ""
+        )
+        _, kwargs = mock_create.call_args
+        assert kwargs.get("tools") == schemas
+
+    def test_single_tool_call_round_trip(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.side_effect = [
+            _tool_response(mocker, "calc", {"expr": "2+2"}),
+            _text_response(mocker, "The answer is 4"),
+        ]
+        executor = mocker.MagicMock(return_value="4")
+        client = OpenRouterClient()
+        schemas = [{"type": "function", "function": {"name": "calc"}}]
+        result = client.ask(
+            "what is 2+2", "sonnet", [], tools=schemas, tool_executor=executor
+        )
+        assert result == "The answer is 4"
+        executor.assert_called_once_with("calc", json.dumps({"expr": "2+2"}))
+
+    def test_executor_called_with_correct_name_and_args(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.side_effect = [
+            _tool_response(mocker, "weather", {"city": "London"}, "id_1"),
+            _text_response(mocker, "It is sunny"),
+        ]
+        executor = mocker.MagicMock(return_value="sunny")
+        client = OpenRouterClient()
+        schemas = [{"type": "function", "function": {"name": "weather"}}]
+        client.ask(
+            "weather?", "sonnet", [], tools=schemas, tool_executor=executor
+        )
+        name_arg, args_arg = executor.call_args.args
+        assert name_arg == "weather"
+        assert json.loads(args_arg) == {"city": "London"}
+
+    def test_tool_result_appended_as_tool_message(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.side_effect = [
+            _tool_response(mocker, "calc", {}),
+            _text_response(mocker, "done"),
+        ]
+        client = OpenRouterClient()
+        schemas = [{"type": "function", "function": {"name": "calc"}}]
+        client.ask(
+            "q",
+            "sonnet",
+            [],
+            tools=schemas,
+            tool_executor=lambda n, a: "result_42",
+        )
+        second_call_messages = mock_create.call_args_list[1].kwargs["messages"]
+        tool_msgs = [m for m in second_call_messages if m["role"] == "tool"]
+        assert len(tool_msgs) == 1
+        assert tool_msgs[0]["content"] == "result_42"
+
+    def test_multi_step_chain(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.side_effect = [
+            _tool_response(mocker, "step1", {}, "id_a"),
+            _tool_response(mocker, "step2", {}, "id_b"),
+            _text_response(mocker, "final"),
+        ]
+        executor = mocker.MagicMock(return_value="ok")
+        client = OpenRouterClient()
+        schemas = [{"type": "function", "function": {"name": "step1"}}]
+        result = client.ask(
+            "q", "sonnet", [], tools=schemas, tool_executor=executor
+        )
+        assert result == "final"
+        assert executor.call_count == 2
+
+    def test_max_iterations_guard(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.return_value = _tool_response(mocker, "loop", {})
+        executor = mocker.MagicMock(return_value="x")
+        client = OpenRouterClient()
+        schemas = [{"type": "function", "function": {"name": "loop"}}]
+        result = client.ask(
+            "q",
+            "sonnet",
+            [],
+            tools=schemas,
+            tool_executor=executor,
+            max_tool_iterations=3,
+        )
+        assert "3" in result
+        assert executor.call_count == 3
+
+    def test_tool_error_string_propagated_to_model(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.side_effect = [
+            _tool_response(mocker, "bad_tool", {}),
+            _text_response(mocker, "sorry, tool failed"),
+        ]
+        client = OpenRouterClient()
+        schemas = [{"type": "function", "function": {"name": "bad_tool"}}]
+        result = client.ask(
+            "q",
+            "sonnet",
+            [],
+            tools=schemas,
+            tool_executor=lambda n, a: "Error: tool exploded",
+        )
+        second_messages = mock_create.call_args_list[1].kwargs["messages"]
+        tool_msgs = [m for m in second_messages if m["role"] == "tool"]
+        assert "Error" in tool_msgs[0]["content"]
+        assert result == "sorry, tool failed"
+
+    def test_empty_tools_list_does_not_pass_tools_to_api(self, mocker):
+        mock_create = self._mock_create(mocker)
+        mock_create.return_value = _text_response(mocker, "done")
+        client = OpenRouterClient()
+        client.ask("q", "sonnet", [], tools=[], tool_executor=lambda n, a: "")
+        _, kwargs = mock_create.call_args
+        assert "tools" not in kwargs

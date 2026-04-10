@@ -21,8 +21,29 @@ from src.process_text import process_text
 from src.router import OLLAMA_FAST_MODEL
 from src.speech_input import WhisperTranscriber
 from src.speech_output import KokoroSpeaker, check_kokoro_files
+from src.tools.registry import _TIER_RANK, REGISTRY
+from src.tools.reminders import REMINDER_STORE
 
-OLLAMA_MODEL_DEFAULT = "sam860/deepseek-r1-0528-qwen3:8b"
+OLLAMA_MODEL_DEFAULT = "gemma4:e4b"
+
+_MODAL_CSS = """
+#code-confirm-modal {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    z-index: 1000 !important;
+    background: var(--background-fill-primary) !important;
+    border: 2px solid var(--border-color-primary) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 48px rgba(0, 0, 0, 0.7) !important;
+    padding: 1.5rem !important;
+    width: 680px !important;
+    max-width: 92vw !important;
+    max-height: 80vh !important;
+    overflow-y: auto !important;
+}
+"""
 
 
 def _ensure_ollama(max_wait: int = 10) -> str | None:
@@ -142,7 +163,7 @@ def build_app(
     transcriber = WhisperTranscriber(model=whisper_model)
     speaker = KokoroSpeaker()
 
-    with gr.Blocks(title="JM Assistant") as demo:
+    with gr.Blocks(title="JM Assistant", css=_MODAL_CSS) as demo:
         with gr.Row():
             gr.Markdown("# JM Assistant")
             dark_toggle = gr.Button("🌙 Dark / ☀️ Light", scale=0, min_width=160)
@@ -225,6 +246,17 @@ def build_app(
             visible=False,
         )
 
+        image_output = gr.Image(
+            label="Output image",
+            visible=False,
+        )
+
+        image_input = gr.Image(
+            sources=["upload", "clipboard"],
+            type="pil",
+            label="Attach image (optional)",
+        )
+
         history_state = gr.State([])
 
         def _memory_status(enabled: bool) -> str:
@@ -239,6 +271,92 @@ def build_app(
             inputs=memory_checkbox,
             outputs=memory_status,
         )
+
+        # ── Tools accordion ─────────────────────────────────────────────────
+        _all_tools = REGISTRY.all()
+        _max_rank = (
+            _TIER_RANK["complex_opus"]
+            if os.environ.get("OPENROUTER_API_KEY")
+            else _TIER_RANK["simple_ollama"]
+        )
+        _TIER_DISPLAY = {
+            "trivial_ollama": "Ollama (fast)",
+            "simple_ollama": "Ollama",
+            "complex_sonnet": "Claude Sonnet",
+            "complex_opus": "Claude Opus",
+        }
+
+        def _achievable(tool) -> bool:
+            return _TIER_RANK.get(tool.min_tier, 0) <= _max_rank
+
+        _init_enabled = {
+            t.name for t in _all_tools if t.default_enabled and _achievable(t)
+        }
+        _tool_count = len(_all_tools)
+        tools_state = gr.State(_init_enabled)
+
+        with gr.Accordion("Tools", open=False):
+            tools_status = gr.Markdown(
+                f"Tools: {len(_init_enabled)} / {_tool_count} enabled"
+            )
+            _by_category: dict[str, list] = {}
+            for _t in _all_tools:
+                _by_category.setdefault(_t.category, []).append(_t)
+
+            _checkboxes: dict[str, gr.Checkbox] = {}
+            for _cat, _cat_tools in _by_category.items():
+                gr.Markdown(f"**{_cat}**")
+                for _tool in _cat_tools:
+                    _ok = _achievable(_tool)
+                    if _ok:
+                        _lbl = _tool.label
+                    else:
+                        _tier_name = _TIER_DISPLAY.get(
+                            _tool.min_tier, _tool.min_tier
+                        )
+                        _lbl = (
+                            f"{_tool.label} — requires {_tier_name} or higher"
+                        )
+                    _checkboxes[_tool.name] = gr.Checkbox(
+                        value=_tool.default_enabled and _ok,
+                        label=_lbl,
+                        interactive=_ok,
+                    )
+                    if _tool.name == "image_gen":
+                        gr.Markdown(
+                            "_Note: enabling Image generation downloads "
+                            "~6.7 GB of SDXL-Turbo weights on first use "
+                            "and requires a CUDA GPU with ≥7 GB VRAM._"
+                        )
+
+        def _make_tool_toggle(name: str):
+            """Return a Gradio change callback for the named tool's checkbox.
+
+            The returned function updates the enabled-tools state set and
+            the tools status Markdown string when the checkbox value changes.
+
+            Args:
+                name: Tool name to add to or remove from the enabled set.
+
+            Returns:
+                A ``(val, state) -> (new_state, status_str)`` callable
+                suitable for wiring to a ``gr.Checkbox.change`` event.
+            """
+
+            def _fn(val: bool, state: set) -> tuple[set, str]:
+                new = (state | {name}) if val else (state - {name})
+                return new, f"Tools: {len(new)} / {_tool_count} enabled"
+
+            return _fn
+
+        for _name, _cb in _checkboxes.items():
+            _tool_def = next(t for t in _all_tools if t.name == _name)
+            if _achievable(_tool_def):
+                _cb.change(
+                    fn=_make_tool_toggle(_name),
+                    inputs=[_cb, tools_state],
+                    outputs=[tools_state, tools_status],
+                )
 
         # ── Mode switching ──────────────────────────────────────────────────
 
@@ -274,9 +392,78 @@ def build_app(
             outputs=chatbot,
         )
 
+        # ── Code execution confirmation modal ───────────────────────────────
+        # Components are created here (before the input handlers that
+        # reference them).  Both start hidden; handle_text / handle_audio
+        # show them when the orchestrator has a pending code execution.
+
+        _OVERLAY_HTML = (
+            '<div style="position:fixed;inset:0;'
+            'background:rgba(0,0,0,0.55);z-index:999"></div>'
+        )
+        modal_overlay = gr.HTML(value=_OVERLAY_HTML, visible=False)
+
+        with gr.Column(
+            visible=False, elem_id="code-confirm-modal"
+        ) as modal_panel:
+            gr.Markdown("### Code Execution Request")
+            gr.Markdown(
+                "Review the code below, then **Approve** to run it "
+                "or **Deny** to cancel."
+            )
+            modal_code = gr.Code(
+                language="python",
+                interactive=False,
+                label="Pending code",
+            )
+            with gr.Row():
+                approve_btn = gr.Button("Approve", variant="primary")
+                deny_btn = gr.Button("Deny", variant="stop")
+
+        _MODAL_OUTPUTS = [modal_overlay, modal_panel, modal_code]
+
+        def _show_modal() -> tuple:
+            """Return gr.update tuples to make the modal visible.
+
+            Returns hidden updates when no execution is pending.
+            """
+            pending = orchestrator._pending_execution
+            if pending is None:
+                return (
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                    gr.update(value=""),
+                )
+            return (
+                gr.update(visible=True),
+                gr.update(visible=True),
+                gr.update(value=pending["code"]),
+            )
+
+        def _hide_modal() -> tuple:
+            """Return gr.update tuples to hide the modal."""
+            return (
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(value=""),
+            )
+
+        def _image_update():
+            """Return a gr.update for the image output component.
+
+            Shows the image if the orchestrator has a pending image result,
+            then leaves it visible until the next query clears it.
+            """
+            img = orchestrator._pending_image
+            if img is not None:
+                return gr.update(visible=True, value=img)
+            return gr.update(visible=False, value=None)
+
         # ── Text input flow ─────────────────────────────────────────────────
 
-        def handle_text(query, history, out_mode, show, voice, mem_enabled):
+        def handle_text(
+            query, history, out_mode, show, voice, mem_enabled, tools, img
+        ):
             """Handle a text query submitted via the text input or send button.
 
             Args:
@@ -286,13 +473,23 @@ def build_app(
                 show: Whether to show ``<think>`` tags in the response.
                 voice: Kokoro voice ID for TTS synthesis.
                 mem_enabled: Whether memory reads/writes are active.
+                tools: Set of currently enabled tool names from the UI.
 
             Returns:
                 A tuple of ``(display_history, history_state, cleared_input,
-                audio_out, memory_status)`` suitable for Gradio's outputs.
+                audio_out, memory_status, overlay, modal, code)`` suitable
+                for Gradio's outputs.
             """
             if not query.strip():
-                return history, history, "", None, _memory_status(mem_enabled)
+                return (
+                    history,
+                    history,
+                    "",
+                    None,
+                    _memory_status(mem_enabled),
+                    gr.update(visible=False, value=None),
+                    gr.update(),
+                ) + _hide_modal()
             display_history, updated_history, audio_out = process_text(
                 query,
                 history,
@@ -303,6 +500,8 @@ def build_app(
                 speaker,
                 lambda: orchestrator.last_backend,
                 memory_enabled=mem_enabled,
+                enabled_tools=tools,
+                image=img,
             )
             return (
                 display_history,
@@ -310,43 +509,39 @@ def build_app(
                 "",
                 audio_out,
                 _memory_status(mem_enabled),
-            )
+                _image_update(),
+                gr.update(value=None),  # clear image input after send
+            ) + _show_modal()
+
+        _text_inputs = [
+            text_input,
+            history_state,
+            output_mode,
+            show_think,
+            voice_selector,
+            memory_checkbox,
+            tools_state,
+            image_input,
+        ]
+        _text_outputs = [
+            chatbot,
+            history_state,
+            text_input,
+            audio_output,
+            memory_status,
+            image_output,
+            image_input,
+        ] + _MODAL_OUTPUTS
 
         submit_btn.click(
             handle_text,
-            inputs=[
-                text_input,
-                history_state,
-                output_mode,
-                show_think,
-                voice_selector,
-                memory_checkbox,
-            ],
-            outputs=[
-                chatbot,
-                history_state,
-                text_input,
-                audio_output,
-                memory_status,
-            ],
+            inputs=_text_inputs,
+            outputs=_text_outputs,
         )
         text_input.submit(
             handle_text,
-            inputs=[
-                text_input,
-                history_state,
-                output_mode,
-                show_think,
-                voice_selector,
-                memory_checkbox,
-            ],
-            outputs=[
-                chatbot,
-                history_state,
-                text_input,
-                audio_output,
-                memory_status,
-            ],
+            inputs=_text_inputs,
+            outputs=_text_outputs,
         )
 
         # ── Speech input flow ───────────────────────────────────────────────
@@ -358,7 +553,7 @@ def build_app(
         # is not interrupted.
 
         def handle_audio(
-            audio_data, history, out_mode, show, voice, mem_enabled
+            audio_data, history, out_mode, show, voice, mem_enabled, tools, img
         ):
             """Handle a microphone recording submitted via the audio input.
 
@@ -375,10 +570,12 @@ def build_app(
                 show: Whether to show ``<think>`` tags in the response.
                 voice: Kokoro voice ID for TTS synthesis.
                 mem_enabled: Whether memory reads/writes are active.
+                tools: Set of currently enabled tool names from the UI.
 
             Returns:
                 A tuple of ``(chatbot, history_state, audio_output,
-                audio_input, memory_status)`` suitable for Gradio's outputs.
+                audio_input, memory_status, overlay, modal, code)``
+                suitable for Gradio's outputs.
             """
             if audio_data is None:
                 # Re-fired by our own reset — leave everything unchanged.
@@ -388,7 +585,9 @@ def build_app(
                     gr.update(),
                     gr.update(),
                     gr.update(),
-                )
+                    gr.update(),
+                    gr.update(),
+                ) + _hide_modal()
             try:
                 display_history, updated_history, audio_out = process_audio(
                     audio_data,
@@ -400,6 +599,8 @@ def build_app(
                     orchestrator,
                     speaker,
                     memory_enabled=mem_enabled,
+                    enabled_tools=tools,
+                    image=img,
                 )
                 return (
                     display_history,
@@ -407,7 +608,9 @@ def build_app(
                     audio_out,
                     gr.update(value=None),  # reset recorder
                     _memory_status(mem_enabled),
-                )
+                    _image_update(),
+                    gr.update(value=None),  # clear image input
+                ) + _show_modal()
             except Exception as exc:  # noqa: BLE001
                 err_display = list(history) + [
                     {
@@ -421,7 +624,9 @@ def build_app(
                     None,
                     gr.update(value=None),  # reset recorder
                     _memory_status(mem_enabled),
-                )
+                    gr.update(visible=False, value=None),
+                    gr.update(),
+                ) + _hide_modal()
 
         audio_input.change(
             handle_audio,
@@ -432,6 +637,8 @@ def build_app(
                 show_think,
                 voice_selector,
                 memory_checkbox,
+                tools_state,
+                image_input,
             ],
             outputs=[
                 chatbot,
@@ -439,7 +646,93 @@ def build_app(
                 audio_output,
                 audio_input,
                 memory_status,
-            ],
+                image_output,
+                image_input,
+            ]
+            + _MODAL_OUTPUTS,
+        )
+
+        # ── Modal button handlers ───────────────────────────────────────────
+
+        def handle_approve(history: list) -> tuple:
+            """Execute pending code and append the result to the chat.
+
+            Args:
+                history: Current conversation history state.
+
+            Returns:
+                Updated ``(chatbot, history_state, overlay, modal,
+                code)`` tuple.
+            """
+            result = orchestrator.confirm_pending()
+            msg = {
+                "role": "assistant",
+                "content": f"**Code output:**\n```\n{result}\n```",
+            }
+            updated = list(history) + [msg]
+            return (updated, updated) + _hide_modal()
+
+        def handle_deny(history: list) -> tuple:
+            """Cancel pending code and append a cancellation notice.
+
+            Args:
+                history: Current conversation history state.
+
+            Returns:
+                Updated ``(chatbot, history_state, overlay, modal,
+                code)`` tuple.
+            """
+            orchestrator.cancel_pending()
+            msg = {
+                "role": "assistant",
+                "content": "Code execution cancelled.",
+            }
+            updated = list(history) + [msg]
+            return (updated, updated) + _hide_modal()
+
+        approve_btn.click(
+            handle_approve,
+            inputs=[history_state],
+            outputs=[chatbot, history_state] + _MODAL_OUTPUTS,
+        )
+        deny_btn.click(
+            handle_deny,
+            inputs=[history_state],
+            outputs=[chatbot, history_state] + _MODAL_OUTPUTS,
+        )
+
+        # ── Reminder timer ──────────────────────────────────────────────────
+        # Poll for due reminders every 10 seconds and inject them into the
+        # chat as assistant messages so the user sees them immediately.
+
+        def _check_reminders(history: list) -> tuple:
+            """Fire any due reminders into the chat history.
+
+            Args:
+                history: The current conversation history state.
+
+            Returns:
+                Updated ``(chatbot, history_state)`` tuple, or
+                ``gr.update()`` if no reminders are due.
+            """
+            due = REMINDER_STORE.get_due(session_id)
+            if not due:
+                return gr.update(), history
+            new_msgs = [
+                {
+                    "role": "assistant",
+                    "content": f"\u23f0 Reminder: {r.message}",
+                }
+                for r in due
+            ]
+            updated = list(history) + new_msgs
+            return updated, updated
+
+        reminder_timer = gr.Timer(value=10, active=True)
+        reminder_timer.tick(
+            fn=_check_reminders,
+            inputs=[history_state],
+            outputs=[chatbot, history_state],
         )
 
     return demo

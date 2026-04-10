@@ -5,6 +5,8 @@ import pytest
 orchestrator_module = pytest.importorskip("src.orchestrator")
 Orchestrator = orchestrator_module.Orchestrator
 
+from src.tools.registry import REGISTRY  # noqa: E402
+
 _MEMORY_BLOCK = (
     "[PAST MEMORIES]\n- [2026-01-01 | conversation] A fact.\n[END MEMORIES]"
 )
@@ -49,7 +51,14 @@ class TestOrchestratorRespond:
             return_value="A detailed answer.",
         )
         response, _ = orch.respond("Explain the French Revolution.", [])
-        mock_claude.assert_called_once_with(mocker.ANY, "sonnet", mocker.ANY)
+        mock_claude.assert_called_once_with(
+            mocker.ANY,
+            "sonnet",
+            mocker.ANY,
+            tools=mocker.ANY,
+            tool_executor=mocker.ANY,
+            image=None,
+        )
         assert response == "A detailed answer."
 
     def test_complex_opus_query_answered_by_claude_opus(self, mocker):
@@ -59,7 +68,14 @@ class TestOrchestratorRespond:
             return_value="A highly detailed answer.",
         )
         response, _ = orch.respond("Prove the Riemann hypothesis.", [])
-        mock_claude.assert_called_once_with(mocker.ANY, "opus", mocker.ANY)
+        mock_claude.assert_called_once_with(
+            mocker.ANY,
+            "opus",
+            mocker.ANY,
+            tools=mocker.ANY,
+            tool_executor=mocker.ANY,
+            image=None,
+        )
         assert response == "A highly detailed answer."
 
     def test_history_is_returned_updated(self, mocker):
@@ -271,3 +287,155 @@ class TestMemoryEnabledPerCall:
         orch.respond("hello", [], memory_enabled=True)
         orch._memory.get_context_block.assert_called_once()
         orch._memory.add.assert_called_once()
+
+
+class TestMathsDispatch:
+    """maths classification calls the calculator tool via the registry."""
+
+    def _make_orch(self, mocker):
+        mocker.patch(
+            "src.orchestrator.OllamaRouter.classify",
+            return_value="maths",
+        )
+        return Orchestrator(session_id="test-session", memory_enabled=False)
+
+    def test_maths_query_answered_by_tool(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(REGISTRY, "dispatch", return_value="4")
+        response, _ = orch.respond("what is 2 + 2?", [])
+        assert response == "4"
+
+    def test_ollama_not_called_when_tool_succeeds(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(REGISTRY, "dispatch", return_value="4")
+        mock_ollama = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond"
+        )
+        orch.respond("what is 2 + 2?", [])
+        mock_ollama.assert_not_called()
+
+    def test_claude_not_called_when_tool_succeeds(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(REGISTRY, "dispatch", return_value="4")
+        mock_claude = mocker.patch("src.orchestrator.OpenRouterClient.ask")
+        orch.respond("what is 2 + 2?", [])
+        mock_claude.assert_not_called()
+
+    def test_backend_label_is_tool_calculator(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(REGISTRY, "dispatch", return_value="4")
+        orch.respond("what is 2 + 2?", [])
+        assert orch.last_backend == "Tool: calculator"
+
+    def test_tool_failure_falls_back_to_fast_ollama(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(REGISTRY, "dispatch", return_value=None)
+        mock_ollama = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="fallback answer",
+        )
+        response, _ = orch.respond("what day is it?", [])
+        mock_ollama.assert_called_once()
+        _, _, model_arg = mock_ollama.call_args.args
+        assert model_arg == orch._fast_model
+        assert response == "fallback answer"
+
+    def test_tool_failure_updates_backend_away_from_tool(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(REGISTRY, "dispatch", return_value=None)
+        mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="fallback",
+        )
+        orch.respond("what day is it?", [])
+        assert orch.last_backend != "Tool: calculator"
+
+    def test_dispatch_called_with_classification_and_query(self, mocker):
+        orch = self._make_orch(mocker)
+        mock_dispatch = mocker.patch.object(
+            REGISTRY, "dispatch", return_value="42"
+        )
+        orch.respond("calculate 6 * 7", [])
+        call_args = mock_dispatch.call_args
+        assert call_args.args[0] == "maths"
+        assert call_args.args[1] == "calculate 6 * 7"
+
+
+class TestConvertDispatch:
+    """convert classification calls the converter tool via the registry."""
+
+    def _make_orch(self, mocker):
+        mocker.patch(
+            "src.orchestrator.OllamaRouter.classify",
+            return_value="convert",
+        )
+        return Orchestrator(session_id="test-session", memory_enabled=False)
+
+    _CONV_RESULT = "5 mi = 8.047 km"
+
+    def test_convert_query_answered_by_tool(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(
+            REGISTRY, "dispatch", return_value=self._CONV_RESULT
+        )
+        response, _ = orch.respond("convert 5 miles to km", [])
+        assert response == self._CONV_RESULT
+
+    def test_ollama_not_called_when_tool_succeeds(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(
+            REGISTRY, "dispatch", return_value=self._CONV_RESULT
+        )
+        mock_ollama = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond"
+        )
+        orch.respond("convert 5 miles to km", [])
+        mock_ollama.assert_not_called()
+
+    def test_claude_not_called_when_tool_succeeds(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(
+            REGISTRY, "dispatch", return_value=self._CONV_RESULT
+        )
+        mock_claude = mocker.patch("src.orchestrator.OpenRouterClient.ask")
+        orch.respond("convert 5 miles to km", [])
+        mock_claude.assert_not_called()
+
+    def test_backend_label_is_tool_converter(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(
+            REGISTRY, "dispatch", return_value=self._CONV_RESULT
+        )
+        orch.respond("convert 5 miles to km", [])
+        assert orch.last_backend == "Tool: converter"
+
+    def test_tool_failure_falls_back_to_fast_ollama(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(REGISTRY, "dispatch", return_value=None)
+        mock_ollama = mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="fallback answer",
+        )
+        response, _ = orch.respond("convert things", [])
+        mock_ollama.assert_called_once()
+        assert response == "fallback answer"
+
+    def test_tool_failure_updates_backend_away_from_tool(self, mocker):
+        orch = self._make_orch(mocker)
+        mocker.patch.object(REGISTRY, "dispatch", return_value=None)
+        mocker.patch(
+            "src.orchestrator.Orchestrator._ollama_respond",
+            return_value="fallback",
+        )
+        orch.respond("convert 5 kg to meters", [])
+        assert orch.last_backend != "Tool: converter"
+
+    def test_dispatch_called_with_classification_and_query(self, mocker):
+        orch = self._make_orch(mocker)
+        mock_dispatch = mocker.patch.object(
+            REGISTRY, "dispatch", return_value="5 mi = 8.047 km"
+        )
+        orch.respond("convert 5 miles to km", [])
+        call_args = mock_dispatch.call_args
+        assert call_args.args[0] == "convert"
+        assert call_args.args[1] == "convert 5 miles to km"

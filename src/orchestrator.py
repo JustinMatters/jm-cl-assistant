@@ -4,6 +4,8 @@ Composes OllamaRouter for complexity classification, OpenRouterClient for
 Claude responses, and a direct Ollama client for trivial and simple queries.
 """
 
+import inspect
+import json
 import logging
 from uuid import uuid4
 
@@ -16,6 +18,27 @@ from src.openrouter_client import (
     OpenRouterClient,
 )
 from src.router import OLLAMA_FAST_MODEL, OLLAMA_MODEL, OllamaRouter
+from src.tools.image_utils import decode_image, is_image_sentinel
+from src.tools.registry import REGISTRY
+
+# Model name prefixes (lowercase) that support vision/image input natively.
+# Used to decide whether an Ollama-routed query with an image attachment
+# should stay local or be escalated to Claude.
+_OLLAMA_VISION_MODELS: frozenset[str] = frozenset(
+    {
+        "gemma4",  # Google Gemma 4 — natively multimodal (adopted in T20.1)
+        "llava",  # LLaVA series
+        "moondream",  # Moondream
+        "bakllava",  # BakLLaVA
+        "minicpm-v",  # MiniCPM-V
+    }
+)
+
+
+def _model_supports_vision(model_name: str) -> bool:
+    """Return True if model_name matches a known vision-capable model prefix."""
+    base = model_name.lower().split("/")[-1]
+    return any(base.startswith(p) for p in _OLLAMA_VISION_MODELS)
 
 
 class Orchestrator:
@@ -66,6 +89,8 @@ class Orchestrator:
                     "continuing without memory",
                     exc,
                 )
+        self._pending_execution: dict | None = None
+        self._pending_image = None
         self._backend_labels = {
             "trivial_ollama": f"Ollama: {fast_model.split('/')[-1]}",
             "simple_ollama": f"Ollama: {ollama_model.split('/')[-1]}",
@@ -78,6 +103,8 @@ class Orchestrator:
         query: str,
         history: list,
         memory_enabled: bool = True,
+        enabled_tools: set[str] | None = None,
+        image=None,
     ) -> tuple[str, list]:
         """Generate a response and update the conversation history.
 
@@ -91,11 +118,16 @@ class Orchestrator:
             memory_enabled: When False, the memory store is neither read
               from (no context injection) nor written to (no recording)
               for this call. Allows the user to toggle memory mid-session.
+            enabled_tools: Set of tool names currently active in the UI.
+              When provided, overrides the registry's ``default_enabled``
+              flags so the UI state is honoured.  Pass ``None`` to fall
+              back to per-tool defaults (used in tests and CLI mode).
 
         Returns:
             A tuple of ``(response_text, updated_history)`` where
             ``updated_history`` includes the new user and assistant turns.
         """
+        self._pending_image = None
         # Retrieve relevant past memories and inject as a system message.
         # augmented is a local copy — it is never written back to history,
         # so the injected context does not accumulate across turns.
@@ -110,18 +142,97 @@ class Orchestrator:
             if context_block
             else list(history)
         )
-        classification = self._router.classify(query)
-        self.last_backend = self._backend_labels[classification]
-        if classification == "trivial_ollama":
-            response = self._ollama_respond(query, augmented, self._fast_model)
-        elif classification == "simple_ollama":
-            response = self._ollama_respond(
-                query, augmented, self._ollama_model
-            )
-        elif classification == "complex_sonnet":
-            response = self._claude.ask(query, "sonnet", augmented)
+        # Build the active tool set for this turn.
+        # Use UI-provided set when available; fall back to registry defaults.
+        if enabled_tools is not None:
+            active_names = enabled_tools
         else:
-            response = self._claude.ask(query, "opus", augmented)
+            active_names = {t.name for t in REGISTRY.all() if t.default_enabled}
+
+        classification = self._router.classify(query, active_names)
+
+        # Attempt tool dispatch — covers all registered Approach A tiers.
+        # dispatch() returns None if the tool cannot handle the query or is
+        # gated by min_tier; orchestrator then falls back to an LLM tier.
+        tool_result = REGISTRY.dispatch(
+            classification,
+            query,
+            active_names,
+            classification,
+            store=self._memory if memory_enabled else None,
+        )
+        if tool_result is not None:
+            matched = next(
+                (
+                    t
+                    for t in REGISTRY.enabled_tools(active_names)
+                    if t.router_tier == classification
+                ),
+                None,
+            )
+            self.last_backend = matched.label if matched else classification
+            response = tool_result
+        else:
+            # LLM tier, or a tool tier whose tool returned None (fall back).
+            effective = (
+                classification
+                if classification in self._backend_labels
+                else "trivial_ollama"
+            )
+            # When an image is attached and the selected Ollama model does
+            # not support vision, escalate to Claude Sonnet which does.
+            if image is not None and effective in (
+                "trivial_ollama",
+                "simple_ollama",
+            ):
+                ollama_model = (
+                    self._fast_model
+                    if effective == "trivial_ollama"
+                    else self._ollama_model
+                )
+                if not _model_supports_vision(ollama_model):
+                    effective = "complex_sonnet"
+            self.last_backend = self._backend_labels[effective]
+            b_schemas = REGISTRY.schemas(active_names)
+            b_executor = (
+                self._make_b_executor(active_names) if b_schemas else None
+            )
+            if effective == "trivial_ollama":
+                response = self._ollama_respond(
+                    query,
+                    augmented,
+                    self._fast_model,
+                    tools=b_schemas,
+                    tool_executor=b_executor,
+                    image=image,
+                )
+            elif effective == "simple_ollama":
+                response = self._ollama_respond(
+                    query,
+                    augmented,
+                    self._ollama_model,
+                    tools=b_schemas,
+                    tool_executor=b_executor,
+                    image=image,
+                )
+            elif effective == "complex_sonnet":
+                response = self._claude.ask(
+                    query,
+                    "sonnet",
+                    augmented,
+                    tools=b_schemas or None,
+                    tool_executor=b_executor,
+                    image=image,
+                )
+            else:
+                response = self._claude.ask(
+                    query,
+                    "opus",
+                    augmented,
+                    tools=b_schemas or None,
+                    tool_executor=b_executor,
+                    image=image,
+                )
         updated_history = list(history) + [
             {"role": "user", "content": query},
             {"role": "assistant", "content": response},
@@ -137,20 +248,173 @@ class Orchestrator:
                 logging.warning("Memory write failed: %s", exc)
         return response, updated_history
 
-    def _ollama_respond(self, query: str, history: list, model: str) -> str:
+    def _make_b_executor(self, active_names: set[str]):
+        """Return a tool executor for Approach B (LLM function-calling) tools.
+
+        The returned callable looks up the tool by name in the registry,
+        normalises ``arguments`` to a JSON string (Ollama passes a dict;
+        OpenRouter passes a string), and calls the tool's ``callable``.
+
+        Args:
+            active_names: Set of tool names currently enabled.
+
+        Returns:
+            A ``(name, arguments) -> str`` callable suitable for passing
+            to ``OpenRouterClient.ask()`` or ``_ollama_respond()``.
+        """
+
+        session_id = self.session_id
+        orchestrator = self
+
+        def _execute(name: str, arguments: str | dict) -> str:
+            tools = REGISTRY.enabled_tools(active_names)
+            tool = next((t for t in tools if t.name == name), None)
+            if tool is None:
+                return f"Error: unknown tool {name!r}"
+            args_str = (
+                json.dumps(arguments)
+                if isinstance(arguments, dict)
+                else arguments
+            )
+            if tool.requires_confirmation:
+                # Store pending execution for the UI to surface a modal.
+                try:
+                    code = json.loads(args_str).get("code", "")
+                except Exception:
+                    code = args_str
+                orchestrator._pending_execution = {
+                    "tool": tool,
+                    "args_str": args_str,
+                    "code": code,
+                }
+                return (
+                    "Code execution requires user approval. "
+                    "The user has been shown the code and must "
+                    "approve before it can run."
+                )
+            try:
+                sig = inspect.signature(tool.callable)
+                kwargs: dict = {}
+                if "session_id" in sig.parameters:
+                    kwargs["session_id"] = session_id
+                result = tool.callable(args_str, **kwargs)
+                if result is None:
+                    return f"Error: {name} returned no result"
+                if is_image_sentinel(result):
+                    orchestrator._pending_image = decode_image(result)
+                    return "Image generated successfully."
+                return result
+            except Exception as exc:
+                return f"Error executing {name}: {exc}"
+
+        return _execute
+
+    def confirm_pending(self) -> str:
+        """Execute the stored pending code and clear the pending state.
+
+        Returns:
+            The code's output, or an error string if execution fails.
+        """
+        if self._pending_execution is None:
+            return "No pending code execution."
+        tool = self._pending_execution["tool"]
+        args_str = self._pending_execution["args_str"]
+        self._pending_execution = None
+        try:
+            result = tool.callable(args_str)
+            return result if result is not None else "(no output)"
+        except Exception as exc:
+            return f"Execution error: {exc}"
+
+    def cancel_pending(self) -> str:
+        """Discard the stored pending code without executing it.
+
+        Returns:
+            A cancellation confirmation string.
+        """
+        self._pending_execution = None
+        return "Code execution cancelled."
+
+    def _ollama_respond(
+        self,
+        query: str,
+        history: list,
+        model: str,
+        tools: list[dict] | None = None,
+        tool_executor=None,
+        max_tool_iterations: int = 5,
+        image=None,
+    ) -> str:
         """Send a query to a local Ollama model and return the response.
+
+        When ``tools`` and ``tool_executor`` are provided, runs an
+        agentic loop matching the Ollama native tool-calling protocol
+        (arguments arrive as a Python dict, not a JSON string).
 
         Args:
             query: The user's input text.
             history: Conversation history as a list of message dicts.
             model: The Ollama model name to call.
+            tools: OpenAI-compatible tool schemas to pass to the model.
+              ``None`` or ``[]`` disables tool calling.
+            tool_executor: Callable invoked as
+              ``tool_executor(name, arguments)`` where ``arguments`` is
+              a Python dict from the Ollama response.
+            max_tool_iterations: Maximum tool-call rounds before the
+              loop is terminated with a guard message.
 
         Returns:
             The model's response text.
         """
-        messages = list(history) + [{"role": "user", "content": query}]
-        try:
-            result = ollama.chat(model=model, messages=messages)
-            return result["message"]["content"]
-        except Exception as exc:
-            return f"(Ollama error: {exc} — please check it is running)"
+        user_msg: dict = {"role": "user", "content": query}
+        if image is not None:
+            import base64
+            import io
+
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            user_msg["images"] = [base64.b64encode(buf.getvalue()).decode()]
+        messages = list(history) + [user_msg]
+        tool_rounds = 0
+        while True:
+            try:
+                chat_kwargs: dict = {"model": model, "messages": messages}
+                if tools:
+                    chat_kwargs["tools"] = tools
+                result = ollama.chat(**chat_kwargs)
+            except Exception as exc:
+                return f"(Ollama error: {exc} — please check it is running)"
+
+            msg = result["message"]
+            tool_calls = msg.get("tool_calls")
+
+            if not tool_calls or not tools or not tool_executor:
+                return msg.get("content") or ""
+
+            # Append assistant message and execute each tool call.
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.get("content") or "",
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": c["function"]["name"],
+                                "arguments": c["function"]["arguments"],
+                            }
+                        }
+                        for c in tool_calls
+                    ],
+                }
+            )
+            for call in tool_calls:
+                fn = call["function"]
+                result_str = tool_executor(fn["name"], fn["arguments"])
+                messages.append({"role": "tool", "content": result_str})
+
+            tool_rounds += 1
+            if tool_rounds >= max_tool_iterations:
+                return (
+                    f"(Tool loop reached {max_tool_iterations} iterations"
+                    " without a final response)"
+                )

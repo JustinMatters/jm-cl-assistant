@@ -24,7 +24,7 @@ User Input (text | Whisper speech)
         ↓
    Ollama Router (local model classifies query)
    ├── trivial_ollama → qwen3:1.7b (fast local model)
-   ├── simple_ollama  → deepseek-r1-0528-qwen3:8b (local reasoning model)
+   ├── simple_ollama  → gemma4:e4b (local multimodal model)
    ├── complex_sonnet → Claude Sonnet 4.6 via OpenRouter
    └── complex_opus   → Claude Opus 4.6 via OpenRouter
         ↓
@@ -37,6 +37,9 @@ User Input (text | Whisper speech)
 - **Intelligent routing** — local Ollama model classifies query complexity and dispatches accordingly
 - **Claude API integration** — Sonnet for moderately complex queries, Opus for the hardest ones
 - **Flexible output** — text only, or text and speech (Kokoro TTS)
+- **Runtime tools** — deterministic answers for maths, unit conversion, currency rates, date/time, weather, dictionary definitions, web search, Wikipedia summaries, URL reading, and reminders; each tool can be toggled on/off in the UI
+- **Code execution sandbox** — LLM-drafted Python snippets run via a restricted asteval interpreter; a confirmation modal shows the code before anything executes so you can approve or deny
+- **RAG memory** — past conversations stored in a local ChromaDB vector store and injected as context on relevant queries; toggleable per session
 
 ## Requirements
 
@@ -86,12 +89,12 @@ This app uses two local models. Pull both before running the app:
 # Trivial queries — fast, low-VRAM
 ollama run qwen3:1.7b
 
-# Simple queries and query routing
-ollama run sam860/deepseek-r1-0528-qwen3:8b
+# Simple queries, query routing, and vision (multimodal)
+ollama run gemma4:e4b
 ```
 
 > **Note:** Ollama loads one model at a time. The fast model (~2 GB VRAM)
-> and the 8B model (~5 GB VRAM) are loaded on demand as queries arrive.
+> and Gemma 4 (~8 GB VRAM) are loaded on demand as queries arrive.
 > On a 16 GB GPU with Whisper medium loaded (~5 GB), there is sufficient
 > headroom for either model.
 
@@ -100,7 +103,7 @@ ollama run sam860/deepseek-r1-0528-qwen3:8b
 | Model | Routing tier | VRAM (approx) |
 |-------|-------------|---------------|
 | `qwen3:1.7b` | `trivial_ollama` — greetings, facts a schoolchild would know | ~2 GB |
-| `sam860/deepseek-r1-0528-qwen3:8b` | `simple_ollama` — factual lookups, routing classifier | ~5 GB |
+| `gemma4:e4b` | `simple_ollama` — factual lookups, routing classifier, vision | ~8 GB |
 | Claude Sonnet 4.6 (OpenRouter) | `complex_sonnet` — analysis, essays, reasoning | cloud |
 | Claude Opus 4.6 (OpenRouter) | `complex_opus` — research, expert proofs | cloud |
 
@@ -114,7 +117,7 @@ uv run python assistant.py --whisper-model tiny --ollama-model llama3.2
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `--whisper-model` | `medium` | Whisper model size (`tiny`, `base`, `small`, `medium`, `large`) |
-| `--ollama-model` | `sam860/deepseek-r1-0528-qwen3:8b` | Ollama model name for routing and simple queries |
+| `--ollama-model` | `gemma4:e4b` | Ollama model name for routing and simple queries |
 
 > **First run note:** If the Whisper model has not been used before, it will
 > be downloaded automatically (~1.5 GB for `medium`) on first launch and
@@ -146,7 +149,7 @@ uv sync
 
 # 2. Pull Ollama models (see Ollama Setup above)
 ollama run qwen3:1.7b
-ollama run sam860/deepseek-r1-0528-qwen3:8b
+ollama run gemma4:e4b
 
 # 3. Download Kokoro model files (see Required Model File Downloads above)
 #    Place kokoro-v1.0.onnx and voices-v1.0.bin in the project root
@@ -186,6 +189,10 @@ uv run pytest -m integration
 | TTS | Kokoro |
 | Local model / routing | Ollama |
 | Cloud LLM | Claude Sonnet 4.6 / Opus 4.6 via OpenRouter |
+| Memory / vector store | ChromaDB |
+| Web search | DuckDuckGo (ddgs) |
+| URL content extraction | trafilatura |
+| Code sandbox | asteval |
 | Package management | UV |
 | Linting / formatting | Ruff |
 | Testing | pytest |
