@@ -255,3 +255,65 @@ class TestLoadModelsPartialEntries:
         # trivial_llm overridden, others use defaults
         assert result["trivial_llm"].model_id == "override"
         assert result["simple_llm"].model_id == _DEFAULTS["simple_llm"].model_id
+
+
+# ── context_tokens field ──────────────────────────────────────────────────────
+
+
+class TestContextTokens:
+    def test_defaults_have_nonzero_context_tokens_for_llm_roles(self):
+        for role in (
+            "trivial_llm",
+            "simple_llm",
+            "advanced_llm",
+            "complex_llm",
+        ):
+            assert _DEFAULTS[role].context_tokens > 0
+
+    def test_defaults_context_tokens_values(self):
+        assert _DEFAULTS["trivial_llm"].context_tokens == 4000
+        assert _DEFAULTS["simple_llm"].context_tokens == 6000
+        assert _DEFAULTS["advanced_llm"].context_tokens == 16000
+        assert _DEFAULTS["complex_llm"].context_tokens == 32000
+
+    def test_non_llm_roles_have_zero_context_tokens(self):
+        for role in (
+            "vector_db_embedding",
+            "whisper_stt_model",
+            "diffusers_image_gen_model",
+        ):
+            assert _DEFAULTS[role].context_tokens == 0
+
+    def test_context_tokens_loaded_from_json(self, tmp_path):
+        data = {
+            "models": [
+                {
+                    "role": "trivial_llm",
+                    "provider": "ollama",
+                    "model_id": "qwen3:1.7b",
+                    "display_name": "Qwen3",
+                    "vision": False,
+                    "context_tokens": 8000,
+                }
+            ]
+        }
+        path = _write_json(tmp_path, data)
+        result = load_models(path)
+        assert result["trivial_llm"].context_tokens == 8000
+
+    def test_context_tokens_defaults_to_zero_when_absent(self, tmp_path):
+        data = {
+            "models": [
+                {
+                    "role": "trivial_llm",
+                    "provider": "ollama",
+                    "model_id": "qwen3:1.7b",
+                    "display_name": "Qwen3",
+                    "vision": False,
+                    # no context_tokens key
+                }
+            ]
+        }
+        path = _write_json(tmp_path, data)
+        result = load_models(path)
+        assert result["trivial_llm"].context_tokens == 0

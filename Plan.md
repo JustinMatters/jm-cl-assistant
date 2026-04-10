@@ -280,7 +280,7 @@ User Input (text | Whisper speech)
 | 21 | Runtime Feature Switches | T21.1 → T21.3 | complete |
 | 22 | Model Configuration File | T22.1 → T22.3 | complete |
 | 23 | Streaming Responses | T23.1 → T23.4 | complete |
-| 24 | Context Window Trimming | T24.1 → T24.4 | not started |
+| 24 | Context Window Trimming | T24.1 → T24.4 | complete |
 | 25 | Conversation Export | T25.1 → T25.3 | not started |
 | 26 | Token and Cost Display | T26.1 → T26.5 | not started |
 | 27 | Session Persistence | T27.1 → T27.4 | not started |
@@ -362,7 +362,7 @@ that keeps the history within a per-model token budget by summarising or
 dropping the oldest turns.
 
 ### T24.1 — Per-model context window in `models.json`
-**Status:** not started
+**Status:** complete
 
 Add an optional `context_tokens` integer field to `ModelConfig` in
 `src/model_config.py` (and the `models.json.example` schema).  This
@@ -374,7 +374,7 @@ defaults: `trivial_llm` 4000, `simple_llm` 6000, `advanced_llm` 16000,
 `tests/test_model_config.py`.
 
 ### T24.2 — Token counting utility
-**Status:** not started
+**Status:** complete
 
 Add a `count_tokens(messages: list[dict]) -> int` helper to `src/helpers.py`
 that estimates token count from message content length (a simple
@@ -383,7 +383,7 @@ The orchestrator reads the active model's `context_tokens` from `_MODEL_CONFIG`
 to determine the budget for the current turn.
 
 ### T24.3 — Trim history when budget is exceeded
-**Status:** not started
+**Status:** complete
 
 In `Orchestrator.respond`, after building `augmented`, determine the budget
 from the active model's `ModelConfig.context_tokens`.  If
@@ -393,7 +393,7 @@ resort, summarise the dropped turns into a brief system note prepended to
 the remaining history.
 
 ### T24.4 — UI indicator and unit tests for context trimming
-**Status:** not started
+**Status:** complete
 
 When trimming occurs, append a small italic note to the assistant reply
 (e.g. `*(older context was trimmed to fit the model's window)*`) so the user
