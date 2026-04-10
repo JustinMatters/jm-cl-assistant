@@ -14,7 +14,7 @@ import ollama
 
 from src.tools.registry import REGISTRY
 
-OLLAMA_MODEL = "sam860/deepseek-r1-0528-qwen3:8b"
+OLLAMA_MODEL = "gemma4:e4b"
 OLLAMA_FAST_MODEL = "qwen3:1.7b"
 
 _BASE_VALID = frozenset(

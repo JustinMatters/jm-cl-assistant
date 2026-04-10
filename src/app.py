@@ -24,7 +24,7 @@ from src.speech_output import KokoroSpeaker, check_kokoro_files
 from src.tools.registry import _TIER_RANK, REGISTRY
 from src.tools.reminders import REMINDER_STORE
 
-OLLAMA_MODEL_DEFAULT = "sam860/deepseek-r1-0528-qwen3:8b"
+OLLAMA_MODEL_DEFAULT = "gemma4:e4b"
 
 _MODAL_CSS = """
 #code-confirm-modal {

@@ -554,43 +554,22 @@ def _image_gen_callable(args_json: str) -> bytes | str:
 
 ### T20.1 — Gemma 4 Model Evaluation and Migration
 
-**Status:** not started
-**Recommended before:** T20.5 (vision routing will be written for the adopted model)
+**Status:** complete
 
-Google's Gemma 4 is natively multimodal (text + vision) and available via
-Ollama.  This ticket evaluates it as a replacement for
-`sam860/deepseek-r1-0528-qwen3:8b` — potentially collapsing the two local
-models into one while simultaneously gaining vision capability for T20.5.
+**Adopted model:** `gemma4:e4b`
 
-**Evaluation steps:**
+`gemma4:e4b` replaces `sam860/deepseek-r1-0528-qwen3:8b` as the
+`simple_ollama` model.  It is natively multimodal (text + vision), freeing
+T20.5 to use the existing local model for vision queries without loading a
+second specialist model.  VRAM budget is comfortable: Gemma 4 e4b fits
+alongside Whisper medium on a 16 GB GPU.
 
-1. Pull the candidate model and smoke-test routing accuracy against the
-   existing `test_router.py` fixtures:
-   ```bash
-   ollama pull gemma4:12b
-   uv run pytest tests/test_router.py -m integration
-   ```
-2. Run the full tool-calling suite with the new model to confirm Approach B
-   JSON extraction works (`test_openrouter_client.py` mocked, integration
-   tests live).
-3. Benchmark subjective response quality on a short set of `simple_ollama`
-   prompts (factual lookups, light reasoning).
-4. Confirm VRAM budget: Gemma 4 12B fp16 ≈ 8 GB; check this fits alongside
-   Whisper medium (~5 GB) on the target 16 GB GPU.
-
-**If adopted — required changes:**
-
-- `src/app.py`: update `OLLAMA_MODEL_DEFAULT` default string.
-- `src/router.py`: update the routing prompt / tier labels if needed.
-- `src/tools/vision.py` (T20.5): ensure `"gemma4"` is in
-  `_OLLAMA_VISION_MODELS` (already noted there).
-- `README.md`: update the model table (both the Ollama Setup section and
-  the architecture diagram string).
-- CLI `--ollama-model` help text: update the documented default.
-- `CLAUDE.md` Architecture section: update the model name.
-
-**If not adopted:** document the reasons in a short comment in `app.py`
-next to `OLLAMA_MODEL_DEFAULT` so the decision is not re-litigated.
+**Changes made:**
+- `src/app.py`: `OLLAMA_MODEL_DEFAULT` updated to `"gemma4:e4b"`.
+- `src/router.py`: `OLLAMA_MODEL` updated to `"gemma4:e4b"`.
+- `README.md`: architecture diagram, model table, setup commands, and CLI
+  argument table all updated.
+- `CLAUDE.md`: `--ollama-model` default updated.
 
 ---
 

@@ -44,7 +44,7 @@ Hybrid AI chatbot that routes queries between a local Ollama model and Claude
 The app accepts the following CLI arguments (implemented in `src/app.py`):
 - `--whisper-model` — Whisper model size (default: `medium`)
 - `--ollama-model` — Ollama model for routing and simple queries
-  (default: `sam860/deepseek-r1-0528-qwen3:8b`)
+  (default: `gemma4:e4b`)
 
 ## Claude Skills to Use
 - Do NOT use the `claude-api` skill for `src/openrouter_client.py` — OpenRouter

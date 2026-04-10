@@ -16,21 +16,19 @@ class TestCheckOllamaModels:
         mock_list = mocker.MagicMock()
         mock_list.models = [
             _make_model("qwen3:1.7b", mocker),
-            _make_model("sam860/deepseek-r1-0528-qwen3:8b", mocker),
+            _make_model("gemma4:e4b", mocker),
         ]
         mocker.patch("src.app.ollama.list", return_value=mock_list)
-        MODEL = "sam860/deepseek-r1-0528-qwen3:8b"
+        MODEL = "gemma4:e4b"
         assert _check_ollama_models("qwen3:1.7b", MODEL) is None
 
     def test_returns_warning_when_model_missing(self, mocker):
         mock_list = mocker.MagicMock()
         mock_list.models = [_make_model("qwen3:1.7b", mocker)]
         mocker.patch("src.app.ollama.list", return_value=mock_list)
-        result = _check_ollama_models(
-            "qwen3:1.7b", "sam860/deepseek-r1-0528-qwen3:8b"
-        )
+        result = _check_ollama_models("qwen3:1.7b", "gemma4:e4b")
         assert result is not None
-        assert "sam860/deepseek-r1-0528-qwen3:8b" in result
+        assert "gemma4:e4b" in result
 
     def test_warning_includes_pull_command(self, mocker):
         mock_list = mocker.MagicMock()
