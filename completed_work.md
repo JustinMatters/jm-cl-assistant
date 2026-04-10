@@ -1394,3 +1394,343 @@ receive the result, and continue reasoning before returning to the user.
 - Add unit tests in `tests/test_code_exec.py`
 
 ---
+
+
+---
+
+## Phase 20 -- Extended Tools
+
+### Overview
+
+Seven new capabilities.  **T20.1 should be done first** -- it replaces the
+default local model and may simplify the vision routing in later tickets.
+T20.2 and T20.3 are enabling tickets that later tools depend on; the
+remaining four (T20.4-T20.7) can be built in any order once those two are
+in place.
+
+**Shared image output mechanism (T20.3):** Tools that produce images
+(flowcharts, data plots, generated images) return their output as a
+`bytes` object tagged with the prefix `__IMAGE__:` followed by a
+base64-encoded PNG.  The orchestrator detects this sentinel and routes the
+payload to a `gr.Image` output component added to the Gradio UI, leaving
+the normal text path unchanged for tools that return strings.
+
+**New dependencies required:**
+
+| Package | Purpose | Ticket |
+|---------|---------|--------|
+| `pypdf` | PDF text extraction | T20.2 |
+| `python-docx` | DOCX text extraction | T20.2 |
+| `graphviz` (Python + system binary) | DOT to PNG rendering | T20.4 |
+| `polars` | DataFrame reads / summary stats | T20.6 |
+| `matplotlib` | Plot generation | T20.6 |
+| `openpyxl` | Excel file support for polars | T20.6 |
+| `diffusers` | Local diffusion image generation | T20.7 |
+| `transformers` | Model loading for diffusers | T20.7 |
+| `accelerate` | Diffusers performance layer | T20.7 |
+
+`torch` is already declared; `trafilatura` (HTML extraction) is already present.
+
+---
+
+### T20.1 -- Gemma 4 Model Evaluation and Migration
+**Status:** complete
+
+Adopted model: `gemma4:e4b` replaces `sam860/deepseek-r1-0528-qwen3:8b` as the
+`simple_ollama` model. Natively multimodal (text + vision). Changes: `src/app.py`
+`OLLAMA_MODEL_DEFAULT`, `src/router.py` `OLLAMA_MODEL`, README.md, CLAUDE.md updated.
+
+---
+
+### T20.2 -- File Reader Tool (local path + URL)
+**Status:** complete
+
+`src/tools/file_reader.py` -- Approach B tool. Reads PDF (pypdf), DOCX (python-docx),
+TXT (stdlib), HTML (trafilatura) from local path or URL. Truncates at 4000 chars.
+Reuses `_validate_url()` from url_reader. Tests in `tests/test_file_reader.py`.
+Dependencies: `pypdf`, `python-docx`.
+
+---
+
+### T20.3 -- Image Output Infrastructure
+**Status:** complete
+
+`src/tools/image_utils.py` -- `encode_image()`, `decode_image()`, `is_image_sentinel()`.
+Sentinel format: `b"__IMAGE__:" + base64(png)`. Orchestrator stores decoded PIL Image in
+`_pending_image`; Gradio `gr.Image` output component shows it. Tests in `tests/test_image_utils.py`.
+
+---
+
+### T20.4 -- Flowchart Generation Tool
+**Status:** complete
+
+`src/tools/flowchart.py` -- Approach B. LLM emits Graphviz DOT; `graphviz.Source.pipe(format="png")`
+renders to PNG returned via sentinel. Handles `ExecutableNotFound` with install instructions.
+Tests in `tests/test_flowchart.py`. Dependency: `graphviz` (Python + system binary).
+
+---
+
+### T20.5 -- Vision API Support
+**Status:** complete
+
+Image attachment via `gr.Image(type="pil")` input. Threaded through `handle_text` /
+`handle_audio` -> `process_text` / `process_audio` -> `orchestrator.respond(image=)`.
+Non-vision Ollama tiers escalate to `complex_sonnet`. `_OLLAMA_VISION_MODELS` frozenset.
+Ollama: `images` key in message dict. OpenRouter: `image_url` content block.
+Tests in `tests/test_vision.py`.
+
+---
+
+### T20.6 -- Data Analysis Tool (Polars + Matplotlib)
+**Status:** complete
+
+`src/tools/data_analysis.py` -- Approach B. Actions: `summarise` (shape, dtypes, describe,
+head 5) and `plot` (bar/line/scatter/histogram via Matplotlib Agg backend, returned as sentinel).
+Loads CSV (`polars.read_csv`) and Excel (`polars.read_excel`/fastexcel). Tests in
+`tests/test_data_analysis.py`. Dependencies: `polars`, `matplotlib`, `fastexcel`.
+
+---
+
+### T20.7 -- Image Generation Tool
+**Status:** complete
+
+`src/tools/image_gen.py` -- Approach B, `default_enabled=False`. Three modes: `local`
+(SDXL-Turbo, CUDA required, ~6.7 GB first-use download), `search` (Openverse CC0 API,
+no key), `auto` (local first, search fallback). Pipeline cached at module level.
+gr.Markdown VRAM warning in Tools accordion. Tests in `tests/test_image_gen.py`.
+Dependencies: `diffusers`, `transformers`, `accelerate`.
+
+
+---
+
+## Phase 21 — Runtime Feature Switches
+
+### Overview
+
+Add CLI flags and matching UI toggles to disable TTS, STT, and tool use at
+startup.  The goal is to allow the assistant to run on minimal hardware where
+loading Whisper, Kokoro, or the full tool registry is undesirable (e.g. a
+low-RAM machine, a headless server, or a quick demo environment).
+
+Each switch is independent — any combination of the three can be disabled.
+When a component is disabled it must be gracefully absent from the UI and
+must not be imported or initialised, saving the associated memory and startup
+time.
+
+### T21.1 — Disable TTS (`--no-tts`)
+**Status:** complete
+
+Add a `--no-tts` CLI flag to `src/app.py`.  When set:
+
+- Skip instantiation of `KokoroSpeaker` and `check_kokoro_files()`.
+- Hide the audio output component (`gr.Audio`) and the voice selector
+  (`gr.Dropdown`) from the UI — they should not be rendered at all, not
+  just disabled.
+- Remove the "text and speech" option from the output mode selector; default
+  to "text" only.
+- `process_text` and `process_audio` already accept a `speaker` argument;
+  pass `None` and guard the TTS call path with `if speaker is not None`.
+- Add unit tests in `tests/test_app_startup.py` (or a new
+  `tests/test_feature_switches.py`) confirming that with `--no-tts` the
+  speaker is `None` and the voice selector is hidden.
+
+### T21.2 — Disable STT (`--no-stt`)
+**Status:** complete
+
+Add a `--no-stt` CLI flag to `src/app.py`.  When set:
+
+- Skip instantiation of `WhisperTranscriber`.
+- Hide the microphone / audio input row and the speech mode radio button
+  entirely — the UI renders in text-only mode with no way to switch to
+  speech input.
+- `process_audio` becomes unreachable; no need to guard it separately.
+- Add unit tests confirming that with `--no-stt` the transcriber is `None`
+  and the audio input is absent from the component tree.
+
+Note: the `--whisper-model` flag is **not** replaced here — it is removed
+entirely in T22.2, where Whisper model size moves to `models.json`.
+
+### T21.3 — Disable Tool Use (`--no-tools`)
+**Status:** complete
+
+Add a `--no-tools` CLI flag to `src/app.py`.  When set:
+
+- Do not import `src.tools` (prevents all tool modules from registering).
+- Pass an empty enabled-tools set to the orchestrator so no Approach A or
+  Approach B tools are dispatched.
+- Hide the Tools accordion from the UI entirely.
+- The orchestrator's `_make_b_executor` still exists but receives an empty
+  tool list, so the LLM never issues a tool call.
+- Add unit tests confirming that with `--no-tools` the registry contributes
+  no tools to the orchestrator and the accordion is absent.
+
+---
+
+## Phase 22 — Model Configuration File
+
+### Overview
+
+Model identities and several user-facing settings are currently hardcoded
+across multiple source files: `src/router.py` (`OLLAMA_MODEL`,
+`OLLAMA_FAST_MODEL`), `src/openrouter_client.py` (`SONNET_MODEL_ID`,
+`OPUS_MODEL_ID`), `src/app.py` (`OLLAMA_MODEL_DEFAULT`,
+`WHISPER_MODEL_DEFAULT`), `src/memory/store.py` (`_EMBED_MODEL`), and
+`src/tools/image_gen.py` (`_SDXL_MODEL`, `_MAX_IMG_DIM`).  Changing any of
+these requires editing source code.
+
+This phase moves all of them into a single JSON file (`models.json`) at the
+project root so users can swap models and tune key parameters without
+touching Python.  The file is read at startup; the application falls back to
+safe built-in defaults if the file is absent or malformed.
+
+As part of this phase the `--whisper-model` CLI flag is removed — the
+Whisper model size is now set in `models.json` instead.  The only
+STT-related CLI flag that remains is `--no-stt` (Phase 21).
+
+The internal router tier names (`trivial_ollama`, `simple_ollama`,
+`complex_sonnet`, `complex_opus`) are also renamed to provider-neutral names
+(`trivial_llm`, `simple_llm`, `advanced_llm`, `complex_llm`) throughout the
+codebase, including all tool `min_tier` fields, `registry.py` rank table,
+`orchestrator.py`, and `app.py`.
+
+**JSON schema (one entry per logical role):**
+```json
+{
+  "models": [
+    {
+      "role": "trivial_llm",
+      "provider": "ollama",
+      "model_id": "qwen3:1.7b",
+      "display_name": "Qwen3 1.7B",
+      "vision": false
+    },
+    {
+      "role": "simple_llm",
+      "provider": "ollama",
+      "model_id": "gemma4:e4b",
+      "display_name": "Gemma 4 (4B)",
+      "vision": true
+    },
+    {
+      "role": "advanced_llm",
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-sonnet-4-6",
+      "display_name": "Claude Sonnet 4.6",
+      "vision": true
+    },
+    {
+      "role": "complex_llm",
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-opus-4-6",
+      "display_name": "Claude Opus 4.6",
+      "vision": true
+    },
+    {
+      "role": "vector_db_embedding",
+      "provider": "ollama",
+      "model_id": "nomic-embed-text",
+      "display_name": "Nomic Embed Text",
+      "vision": false
+    },
+    {
+      "role": "whisper_stt_model",
+      "provider": "local",
+      "model_id": "medium",
+      "display_name": "Whisper medium",
+      "vision": false
+    },
+    {
+      "role": "diffusers_image_gen_model",
+      "provider": "local",
+      "model_id": "stabilityai/sdxl-turbo",
+      "display_name": "SDXL-Turbo",
+      "vision": false,
+      "diffusers_max_image_dimension": 512
+    }
+  ]
+}
+```
+
+**Fields (all roles):**
+- `role` — one of `trivial_llm`, `simple_llm`, `advanced_llm`,
+  `complex_llm`, `vector_db_embedding`, `whisper_stt_model`,
+  `diffusers_image_gen_model`
+- `provider` — `"ollama"`, `"openrouter"`, or `"local"` (local Python
+  library, not an API)
+- `model_id` — the identifier passed to the provider (Ollama model name,
+  OpenRouter model string, Whisper size, or HuggingFace repo ID)
+- `display_name` — human-readable label shown in the UI
+- `vision` — whether this model accepts image inputs (replaces the hardcoded
+  `_OLLAMA_VISION_MODELS` frozenset in `orchestrator.py`)
+
+**Fields (diffusers_image_gen_model only):**
+- `diffusers_max_image_dimension` — maximum pixel size of generated images
+  (replaces `_MAX_IMG_DIM`); images are thumbnailed to this size after
+  generation or download
+
+### T22.1 — `models.json` and loader module
+**Status:** complete
+
+- Create `models.json` at the project root with the seven default entries
+  above.
+- Create `src/model_config.py` with a `ModelConfig` dataclass and a
+  `load_models(path: str = "models.json") -> dict[str, ModelConfig]`
+  function that:
+  - Reads and validates the JSON (all required fields present, role is one
+    of the seven known values, provider is `"ollama"`, `"openrouter"`, or
+    `"local"`).
+  - Returns a dict keyed by role.
+  - Falls back to hardcoded defaults and logs a warning if the file is
+    missing or invalid — the app must still start cleanly.
+- Add `models.json` to `.gitignore` so user customisations are not
+  committed; ship a tracked `models.json.example` with the same content.
+- Add unit tests in `tests/test_model_config.py` covering: valid file loads
+  correctly, missing file uses defaults, invalid JSON uses defaults, missing
+  required field uses defaults, unknown role is ignored,
+  `diffusers_max_image_dimension` defaults to 512 when absent.
+
+### T22.2 — Wire loader into application code
+**Status:** complete
+
+Replace all hardcoded model constants with values read from `load_models()`
+and rename internal tier names throughout the codebase:
+
+**Tier rename** (touches `router.py`, `registry.py`, `orchestrator.py`,
+`app.py`, and all tool files with a `min_tier` field):
+
+| Old name | New name |
+|---|---|
+| `trivial_ollama` | `trivial_llm` |
+| `simple_ollama` | `simple_llm` |
+| `complex_sonnet` | `advanced_llm` |
+| `complex_opus` | `complex_llm` |
+
+**Constants replaced:**
+- `src/router.py` — `OLLAMA_MODEL` and `OLLAMA_FAST_MODEL` sourced from
+  `simple_llm` and `trivial_llm` roles respectively.
+- `src/openrouter_client.py` — `SONNET_MODEL_ID` and `OPUS_MODEL_ID`
+  sourced from `advanced_llm` and `complex_llm` roles.
+- `src/orchestrator.py` — `_OLLAMA_VISION_MODELS` frozenset replaced by
+  checking `ModelConfig.vision` on the loaded configs; display name strings
+  sourced from `display_name` field.
+- `src/app.py` — `OLLAMA_MODEL_DEFAULT` sourced from `simple_llm` role;
+  `WHISPER_MODEL_DEFAULT` sourced from `whisper_stt_model` role;
+  `--whisper-model` CLI flag removed entirely (Whisper size is now
+  config-only).
+- `src/memory/store.py` — `_EMBED_MODEL` sourced from `vector_db_embedding`
+  role.
+- `src/tools/image_gen.py` — `_SDXL_MODEL` sourced from
+  `diffusers_image_gen_model` role; `_MAX_IMG_DIM` sourced from
+  `diffusers_max_image_dimension` field.
+- All existing constants become module-level variables initialised from the
+  loader so the rest of each module's code is unchanged.
+
+### T22.3 — UI model status display
+**Status:** complete
+
+- Show the active model for each role in the UI — inside a collapsible
+  "Models" accordion listing each role's `display_name` and `provider`.
+- This gives users immediate visual confirmation that their `models.json`
+  changes have taken effect without inspecting logs.
+- Update `tests/test_app_startup.py` to confirm the Models accordion is
+  rendered when the app is built.

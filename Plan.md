@@ -240,336 +240,15 @@ User Input (text | Whisper speech)
 ---
 
 ## Phase 20 — Extended Tools
+*Archived to completed_work.md.*
 
-### Overview
-
-Seven new capabilities.  **T20.1 should be done first** — it replaces the
-default local model and may simplify the vision routing in later tickets.
-T20.2 and T20.3 are enabling tickets that later tools depend on; the
-remaining four (T20.4–T20.7) can be built in any order once those two are
-in place.
-
-**Shared image output mechanism (T20.3):** Tools that produce images
-(flowcharts, data plots, generated images) return their output as a
-`bytes` object tagged with the prefix `__IMAGE__:` followed by a
-base64-encoded PNG.  The orchestrator detects this sentinel and routes the
-payload to a `gr.Image` output component added to the Gradio UI, leaving
-the normal text path unchanged for tools that return strings.
-
-**New dependencies required:**
-
-| Package | Purpose | Ticket |
-|---------|---------|--------|
-| `pypdf` | PDF text extraction | T20.2 |
-| `python-docx` | DOCX text extraction | T20.2 |
-| `graphviz` (Python + system binary) | DOT → PNG rendering | T20.4 |
-| `polars` | DataFrame reads / summary stats | T20.6 |
-| `matplotlib` | Plot generation | T20.6 |
-| `openpyxl` | Excel file support for polars | T20.6 |
-| `diffusers` | Local diffusion image generation | T20.7 |
-| `transformers` | Model loading for diffusers | T20.7 |
-| `accelerate` | Diffusers performance layer | T20.7 |
-
-`torch` is already declared; `trafilatura` (HTML extraction) is already
-present.
-
----
-
-### T20.2 — File Reader Tool (local path + URL)
-**Status:** not started
-
-Implement `src/tools/file_reader.py` — a single Approach B tool that reads
-the text content of a file supplied either as a local filesystem path or a
-remote URL.
-
-**Supported formats:**
-
-| Format | Local path | URL |
-|--------|-----------|-----|
-| PDF | `pypdf` | download then parse |
-| DOCX | `python-docx` | download then parse |
-| TXT | stdlib `open()` | `urllib.request` |
-| HTML | `trafilatura` (already present) | `trafilatura` |
-
-**Design notes:**
-- Detect format from the file extension (`.pdf`, `.docx`, `.txt`, `.htm`,
-  `.html`); fall back to attempting HTML extraction for unknown extensions
-  when given a URL.
-- For remote non-HTML files (e.g. a PDF URL), download to a `tempfile`
-  then parse; clean up the temp file after reading.
-- Reuse `_validate_url()` from `url_reader.py` for scheme validation before
-  any network call.
-- Sanitise and truncate extracted text using the same control-character
-  stripping pattern used in `url_reader.py` and `wikipedia.py`, capped at
-  `_MAX_CONTENT = 4000` characters.
-- Return the text framed as `"Content from <source>:\n\n{text}\n\n(Source:
-  <source>)"` so the LLM knows it is reading external material.
-- Register a `ToolDefinition` (Approach B, `default_enabled=True`,
-  `min_tier="complex_sonnet"`, `category="files"`).
-- Parameters schema: `{"path_or_url": {"type": "string"}}`.
-- Add unit tests in `tests/test_file_reader.py` (mock file I/O and HTTP).
-
-**Dependencies to add via UV:** `pypdf`, `python-docx`
-
----
-
-### T20.3 — Image Output Infrastructure
-**Status:** not started
-
-All tools that produce images need a shared mechanism to deliver them to
-the Gradio UI.  This ticket establishes that mechanism so T20.4–T20.7 each
-have a clean, consistent path.
-
-**Return value convention:**
-- Image-producing tool callables return a `bytes` object encoded as:
-  `b"__IMAGE__:" + base64.b64encode(png_bytes)`
-- All other tools continue to return plain strings; the orchestrator
-  ignores the sentinel for them.
-
-**Orchestrator changes (`src/orchestrator.py`):**
-- After a B-tool executor returns a value, check for the `__IMAGE__:`
-  prefix.
-- If detected: decode the base64 payload, store the PNG bytes in
-  `self._pending_image`, and return a human-readable text description
-  to the LLM (e.g. `"Image generated successfully."`).
-- `self._pending_image: bytes | None = None` — reset to `None` on each
-  `respond()` call.
-
-**Gradio UI changes (`src/app.py`):**
-- Add a `gr.Image(visible=False, label="Output image")` component.
-- After `handle_text` / `handle_audio` call `orchestrator.respond()`,
-  check `orchestrator._pending_image`:
-  - If set: call `gr.update(visible=True, value=…)` to show the image.
-  - If not: call `gr.update(visible=False, value=None)` to hide it.
-- Add `image_output` to the outputs list of both `submit_btn.click` and
-  `text_input.submit` and `audio_input.change`.
-- The image output component sits below the chatbot and above the text
-  input row.
-
-**Helper function in `src/tools/image_utils.py`:**
-```python
-import base64, io
-from PIL import Image   # already available via diffusers / torch
-
-def encode_image(img: Image.Image) -> bytes:
-    """Encode a PIL Image as the __IMAGE__ sentinel bytes."""
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return b"__IMAGE__:" + base64.b64encode(buf.getvalue())
-```
-
-Add unit tests in `tests/test_image_utils.py`.
-
----
-
-### T20.4 — Flowchart Generation Tool
-**Status:** not started
-
-Implement `src/tools/flowchart.py` — the LLM generates
-[Graphviz DOT notation](https://graphviz.org/doc/info/lang.html) and the
-tool renders it to a PNG image returned via the T20.3 sentinel.
-
-**Design notes:**
-- Approach B tool; parameters schema:
-  `{"dot": {"type": "string", "description": "Valid Graphviz DOT source"}}`.
-- Use the `graphviz` Python library (`graphviz.Source(dot).pipe(format="png")`)
-  to render to PNG bytes without writing to disk.
-- Pass the PNG bytes through `encode_image()` (T20.3) to produce the
-  sentinel return value.
-- On `graphviz.ExecutableNotFound`: return a clear error message asking
-  the user to install Graphviz (`winget install graphviz` / `brew install
-  graphviz` / `apt install graphviz`).
-- The LLM system prompt for this tool should specify that it must emit
-  valid DOT source only, no commentary — the description and examples
-  guide this.
-- Register a `ToolDefinition` (Approach B, `default_enabled=True`,
-  `min_tier="complex_sonnet"`, `category="visual"`).
-- Add unit tests in `tests/test_flowchart.py` (mock `graphviz.Source.pipe`).
-
-**Dependencies to add via UV:** `graphviz` (Python package);
-instruct user to also install the Graphviz system binary separately.
-
----
-
-### T20.5 — Vision API Support
-**Status:** not started
-
-Allow the user to attach an image to a query and have it analysed by a
-vision-capable model.
-
-**UI changes (`src/app.py`):**
-- Add a `gr.Image(sources=["upload", "clipboard"], type="pil",
-  visible=True, label="Attach image (optional)")` component.
-- The attached image is optional — if `None`, the existing text-only flow
-  is unchanged.
-- Thread the image through `handle_text` → `process_text` →
-  `orchestrator.respond()` as an additional `image` parameter
-  (defaults to `None`).
-
-**Routing logic (`src/orchestrator.py`):**
-- When `image is not None`, always route to at least `complex_sonnet`
-  (Claude supports vision; small Ollama models generally do not).
-- Exception: if the active Ollama model is a known vision model and the
-  tier is `trivial_ollama` or `simple_ollama`, send to Ollama instead.
-- Add an `_OLLAMA_VISION_MODELS` frozenset of known vision-capable model
-  name prefixes.
-
-> **Note — Gemma 4 as preferred local vision model:**
-> Google's Gemma 4 is natively multimodal (text + vision) and available
-> via Ollama (`ollama pull gemma4:12b` or similar).  It is a strong
-> candidate to replace `sam860/deepseek-r1-0528-qwen3:8b` as the
-> `simple_ollama` model entirely — giving the local tier vision capability
-> at no extra cost (one model instead of two separate ones).
-> Include `"gemma4"` in `_OLLAMA_VISION_MODELS` from the outset.
-> The model evaluation and default-config update are handled in T20.1;
-> the vision routing logic here should be written to work correctly
-> whichever model is configured.
-
-**OpenRouter client changes (`src/openrouter_client.py`):**
-- `ask()` gains an optional `image: PIL.Image.Image | None = None`
-  parameter.
-- When set, encode as base64 PNG and include in the user message as an
-  OpenAI vision content block:
-  ```python
-  {"type": "image_url",
-   "image_url": {"url": f"data:image/png;base64,{b64}"}}
-  ```
-
-**Ollama client path (`src/orchestrator.py` `_ollama_respond()`):**
-- Ollama vision models accept `images` in the message dict:
-  `{"role": "user", "content": text, "images": [b64_bytes]}`.
-
-**`src/process_text.py` and `src/process_audio.py`:**
-- Add `image` parameter (default `None`) threading it to
-  `orchestrator.respond()`.
-
-Add unit tests in `tests/test_vision.py` (mock the API calls).
-
----
-
-### T20.6 — Data Analysis Tool (Polars + Matplotlib)
-**Status:** not started
-
-Implement `src/tools/data_analysis.py` — reads a CSV or Excel file (by
-local path or URL), produces a statistical summary, and optionally
-generates a chart.
-
-**Design notes:**
-- Approach B tool with two operations controlled by an `action` parameter:
-  - `"summarise"` — load the file and return `shape`, column types,
-    `describe()` statistics, and the first 5 rows as plain text.
-  - `"plot"` — generate a chart of the type specified by the `chart_type`
-    parameter (`"bar"`, `"line"`, `"scatter"`, `"histogram"`), using
-    columns specified by `x_col` and `y_col`.
-- Parameters schema:
-  ```json
-  {
-    "path_or_url": {"type": "string"},
-    "action":      {"type": "string", "enum": ["summarise", "plot"]},
-    "chart_type":  {"type": "string", "enum": ["bar","line","scatter","histogram"]},
-    "x_col":       {"type": "string"},
-    "y_col":       {"type": "string"},
-    "title":       {"type": "string"}
-  }
-  ```
-  (`chart_type`, `x_col`, `y_col`, `title` required only for `action="plot"`.)
-- For URL inputs, download to a temp file then load with Polars.
-- For Excel files (`.xlsx`, `.xls`), use `polars.read_excel()` which
-  requires `openpyxl`.
-- Plots use `matplotlib.figure.Figure` (non-interactive backend —
-  `matplotlib.use("Agg")` at module level to avoid display dependencies);
-  the resulting PNG is returned via `encode_image()` (T20.3).
-- Summarise output is returned as a plain text string.
-- Register a `ToolDefinition` (Approach B, `default_enabled=True`,
-  `min_tier="complex_sonnet"`, `category="files"`).
-- Add unit tests in `tests/test_data_analysis.py`.
-
-**Dependencies to add via UV:** `polars`, `matplotlib`, `openpyxl`
-
----
-
-### T20.7 — Image Generation Tool
-**Status:** complete
-
-Implement `src/tools/image_gen.py` — generates an image from a text
-prompt, first attempting local diffusion and falling back to a CC0 image
-search if the local model is unavailable.
-
-**Local generation (primary path):**
-- Use `diffusers` with `stabilityai/sdxl-turbo` as the default model:
-  - 4-step generation; fast on a modern GPU (~2–5 s at 512×512).
-  - ~6.7 GB VRAM in fp16.
-  - Model downloaded on first use to the HuggingFace cache
-    (`~/.cache/huggingface/`) — not bundled with the repo.
-- Pipeline: `AutoPipelineForText2Image.from_pretrained(...,
-  torch_dtype=torch.float16)`.
-- If `torch.cuda.is_available()` is False, skip local generation and go
-  directly to the CC0 fallback.
-- If the model files are absent (cache miss on first run), raise a
-  recognisable `EnvironmentError`; catch it in the callable and fall
-  back.
-- Generate at 512×512 with `num_inference_steps=4`, `guidance_scale=0.0`
-  (SDXL-Turbo is guidance-free).
-- Return the image via `encode_image()` (T20.3).
-
-**CC0 fallback (Openverse API):**
-- Query `https://api.openverse.org/v1/images/?q={prompt}&license=cc0`
-  (no API key required).
-- Download the first result's image URL, decode to `PIL.Image`, and
-  return via `encode_image()`.
-- If Openverse also fails, return a plain-text error string.
-
-**Callable flow:**
-```python
-def _image_gen_callable(args_json: str) -> bytes | str:
-    prompt = ...
-    # 1. Try local diffusion
-    try:
-        return _generate_local(prompt)
-    except (EnvironmentError, RuntimeError):
-        pass
-    # 2. Try Openverse CC0 search
-    try:
-        return _search_cc0(prompt)
-    except Exception as exc:
-        return f"Image generation failed: {exc}"
-```
-
-**Parameters schema:**
-```json
-{"prompt": {"type": "string",
-            "description": "Descriptive text for the image to generate"}}
-```
-
-- Register a `ToolDefinition` (Approach B, `default_enabled=False`,
-  `min_tier="complex_sonnet"`, `category="visual"`).
-  Off by default because the first run triggers a ~7 GB model download.
-- A `gr.Markdown` warning in the Tools accordion explains the download
-  requirement when the tool is enabled.
-- Add unit tests in `tests/test_image_gen.py` (mock both paths).
-
-**Dependencies to add via UV:** `diffusers`, `transformers`, `accelerate`
-
----
-
-### T20.1 — Gemma 4 Model Evaluation and Migration
-
-**Status:** complete
-
-**Adopted model:** `gemma4:e4b`
-
-`gemma4:e4b` replaces `sam860/deepseek-r1-0528-qwen3:8b` as the
-`simple_ollama` model.  It is natively multimodal (text + vision), freeing
-T20.5 to use the existing local model for vision queries without loading a
-second specialist model.  VRAM budget is comfortable: Gemma 4 e4b fits
-alongside Whisper medium on a 16 GB GPU.
-
-**Changes made:**
-- `src/app.py`: `OLLAMA_MODEL_DEFAULT` updated to `"gemma4:e4b"`.
-- `src/router.py`: `OLLAMA_MODEL` updated to `"gemma4:e4b"`.
-- `README.md`: architecture diagram, model table, setup commands, and CLI
-  argument table all updated.
-- `CLAUDE.md`: `--ollama-model` default updated.
+- T20.1 — Gemma 4 Model Evaluation and Migration — complete
+- T20.2 — File Reader Tool (local path + URL) — complete
+- T20.3 — Image Output Infrastructure — complete
+- T20.4 — Flowchart Generation Tool — complete
+- T20.5 — Vision API Support — complete
+- T20.6 — Data Analysis Tool (Polars + Matplotlib) — complete
+- T20.7 — Image Generation Tool — complete
 
 ---
 
@@ -598,6 +277,357 @@ alongside Whisper medium on a 16 GB GPU.
 | 18 | RAG Memory | T18.1 → T18.6 | complete |
 | 19 | Tools | T19.1 → T19.20 | complete |
 | 20 | Extended Tools | T20.1 → T20.7 | complete |
+| 21 | Runtime Feature Switches | T21.1 → T21.3 | complete |
+| 22 | Model Configuration File | T22.1 → T22.3 | complete |
+| 23 | Streaming Responses | T23.1 → T23.4 | not started |
+| 24 | Context Window Trimming | T24.1 → T24.4 | not started |
+| 25 | Conversation Export | T25.1 → T25.3 | not started |
+| 26 | Token and Cost Display | T26.1 → T26.5 | not started |
+| 27 | Session Persistence | T27.1 → T27.4 | not started |
+| 28 | Coverage Report | T28.1 → T28.3 | not started |
+| 29 | Docker Support | T29.1 → T29.3 | not started |
+
+---
+
+## Phase 21 — Runtime Feature Switches
+*Archived to completed_work.md.*
+
+- T21.1 — Disable TTS (`--no-tts`) — complete
+- T21.2 — Disable STT (`--no-stt`) — complete
+- T21.3 — Disable Tool Use (`--no-tools`) — complete
+
+---
+
+## Phase 22 — Model Configuration File
+*Archived to completed_work.md.*
+
+- T22.1 — `models.json` and loader module — complete
+- T22.2 — Wire loader into application code — complete
+- T22.3 — UI model status display — complete
+
+---
+
+## Phase 23 — Streaming Responses
+
+### Overview
+
+Currently the orchestrator waits for the full LLM response before returning
+it to Gradio, which creates a noticeable lag for longer Claude replies.
+Gradio supports `yield`-based streaming — the generator produces response
+chunks as they arrive and Gradio updates the chat panel incrementally.
+
+### T23.1 — Stream Ollama responses
+**Status:** not started
+
+Modify `_ollama_respond` in `src/orchestrator.py` to accept a `stream=True`
+parameter and yield content chunks from the `ollama.chat` streaming API.
+Non-streaming callers (tests, tool loop) must continue to work unchanged.
+
+### T23.2 — Stream OpenRouter responses
+**Status:** not started
+
+Modify `OpenRouterClient.ask` in `src/openrouter_client.py` to accept a
+`stream=True` parameter and yield content chunks from the OpenAI-compatible
+streaming API (`stream=True` on the completions call).  Ensure the tool-use
+agentic loop (which needs the full response to detect tool calls) still
+operates in non-streaming mode.
+
+### T23.3 — Wire streaming into the Gradio UI
+**Status:** not started
+
+Update `process_text` and `process_audio` in `src/process_text.py` and
+`src/process_audio.py` to accept a `stream` flag and `yield` intermediate
+history states when streaming is active.  Update the Gradio event wiring in
+`src/app.py` to use streaming outputs (`submit_btn.click(..., streaming=True)`
+or equivalent).  TTS synthesis must only be triggered on the final complete
+response, not on partial chunks.
+
+### T23.4 — Unit tests for streaming
+**Status:** not started
+
+Add tests covering: streamed chunks are concatenated correctly, TTS is called
+only once with the full response, tool-use path bypasses streaming, and
+non-streaming callers are unaffected.
+
+---
+
+## Phase 24 — Context Window Trimming
+
+### Overview
+
+Conversation history is passed to the LLM on every turn and grows
+unboundedly.  Long sessions will eventually exceed the model's context window,
+causing silent truncation or API errors.  This phase adds a trimming strategy
+that keeps the history within a per-model token budget by summarising or
+dropping the oldest turns.
+
+### T24.1 — Per-model context window in `models.json`
+**Status:** not started
+
+Add an optional `context_tokens` integer field to `ModelConfig` in
+`src/model_config.py` (and the `models.json.example` schema).  This
+represents the usable history budget for that model in tokens — distinct from
+the model's advertised context window, which is typically much larger but
+includes the system prompt, tools schema, and current query.  Sensible
+defaults: `trivial_llm` 4000, `simple_llm` 6000, `advanced_llm` 16000,
+`complex_llm` 32000.  Update `_DEFAULTS` and the loader; add tests in
+`tests/test_model_config.py`.
+
+### T24.2 — Token counting utility
+**Status:** not started
+
+Add a `count_tokens(messages: list[dict]) -> int` helper to `src/helpers.py`
+that estimates token count from message content length (a simple
+characters-divided-by-four heuristic is sufficient; no tiktoken dependency).
+The orchestrator reads the active model's `context_tokens` from `_MODEL_CONFIG`
+to determine the budget for the current turn.
+
+### T24.3 — Trim history when budget is exceeded
+**Status:** not started
+
+In `Orchestrator.respond`, after building `augmented`, determine the budget
+from the active model's `ModelConfig.context_tokens`.  If
+`count_tokens(augmented)` exceeds the budget, drop the oldest non-system
+turns (pairs of user+assistant messages) until the budget is met.  As a last
+resort, summarise the dropped turns into a brief system note prepended to
+the remaining history.
+
+### T24.4 — UI indicator and unit tests for context trimming
+**Status:** not started
+
+When trimming occurs, append a small italic note to the assistant reply
+(e.g. `*(older context was trimmed to fit the model's window)*`) so the user
+is aware.  Add unit tests covering: history within budget is unchanged,
+oversized history is trimmed to fit, system messages are preserved, the note
+appears only when trimming occurs, and the budget is read from model config.
+
+---
+
+## Phase 25 — Conversation Export
+
+### Overview
+
+Users may want to save a chat session as a readable file.  This phase adds a
+download button that serialises the current Gradio history state to a
+Markdown file and offers it for download.
+
+### T25.1 — Export formatter
+**Status:** not started
+
+Add `format_history_as_markdown(history: list[dict]) -> str` to
+`src/helpers.py`.  Each turn becomes a `**User:**` / `**Assistant:**` block
+separated by horizontal rules.  Include a timestamp header at the top.
+
+### T25.2 — Download button in the Gradio UI
+**Status:** not started
+
+Add a `gr.DownloadButton` (or `gr.File`) to `src/app.py` that, when clicked,
+calls the formatter and serves the result as `conversation.md`.  Wire it to
+the `history_state` so it always reflects the current session.
+
+### T25.3 — Unit tests for export
+**Status:** not started
+
+Tests covering: empty history produces a valid header-only file, user and
+assistant turns are formatted correctly, special Markdown characters in
+content are preserved (not double-escaped).
+
+---
+
+## Phase 26 — Token and Cost Display
+
+### Overview
+
+OpenRouter returns token usage metadata on every response.  Surfacing per-call
+token counts and an approximate cost in the UI helps users understand spend,
+especially for Opus which is significantly more expensive than Sonnet.
+
+### T26.1 — Capture usage metadata from OpenRouter
+**Status:** not started
+
+Update `OpenRouterClient.ask` in `src/openrouter_client.py` to extract
+`usage.prompt_tokens`, `usage.completion_tokens`, and `usage.total_tokens`
+from the API response and return them alongside the text response (e.g. as
+a `(text, usage_dict)` tuple or by storing on the client instance).
+
+### T26.2 — Cost calculation
+**Status:** not started
+
+Add a `PRICING` dict to `src/openrouter_client.py` keyed by model ID with
+per-million-token input and output costs (sourced from the OpenRouter pricing
+page).  Add `calculate_cost(model_id, prompt_tokens, completion_tokens) -> float`.
+
+### T26.3 — Per-response cost in the UI
+**Status:** not started
+
+After each Claude response, display token counts and estimated cost as a small
+grey annotation below the assistant message (e.g. `*(523 tokens · ~$0.002)*`).
+Ollama responses show token counts only (no cost).  Implement via a separate
+`gr.Markdown` component updated after each turn.
+
+### T26.4 — Session total cost tracker
+**Status:** not started
+
+Accumulate per-response costs in a session total displayed in the sidebar
+(e.g. `Session cost: ~$0.014`).  Reset to zero when the conversation is
+cleared.
+
+### T26.5 — Unit tests for cost tracking
+**Status:** not started
+
+Tests covering: cost calculation is correct for known token counts, Ollama
+path produces zero cost, session total accumulates correctly, display
+formatting rounds to a sensible number of decimal places.
+
+---
+
+## Phase 27 — Session Persistence
+
+### Overview
+
+Gradio's `history_state` is lost when the page is refreshed or the server
+restarts.  This phase adds the ability to save named sessions to disk and
+reload them, complementing the existing RAG memory (which stores semantic
+content) with full verbatim conversation replay.
+
+### T27.1 — Session serialisation
+**Status:** not started
+
+Add `save_session(name: str, history: list[dict], path: str = "sessions/")`,
+`load_session(name: str, path: str = "sessions/") -> list[dict]`, and
+`delete_session(name: str, path: str = "sessions/")` to a new
+`src/sessions.py` module.  Sessions are stored as JSON files in `sessions/`
+(gitignored).  Include a `list_sessions()` helper returning saved session names.
+Sanitise session names to safe filenames (alphanumeric, hyphens, underscores only).
+
+### T27.2 — Save and load UI
+**Status:** not started
+
+Add a collapsible "Sessions" accordion to `src/app.py` containing:
+- A text input for the session name
+- A `Save` button that writes the current history to disk; if the name already
+  exists show a warning Markdown element (`*Session already exists — save again
+  to overwrite*`) and only overwrite on a second click
+- A `gr.Dropdown` listing saved sessions, refreshed on open
+- A `Load` button that replaces the current history with the selected session
+
+### T27.3 — Session deletion with confirmation
+**Status:** not started
+
+Add a `Delete` button alongside the session dropdown.  Deletion is a
+two-step interaction: the first click changes the button label to
+`Confirm delete?` and sets a pending-delete flag in `gr.State`; a second
+click within the same UI interaction executes the deletion and refreshes the
+dropdown.  Any other action (selecting a different session, clicking Load,
+clicking Save) cancels the pending delete and resets the button label.
+
+### T27.4 — Unit tests for session persistence
+**Status:** not started
+
+Tests covering: save writes a valid JSON file, load restores history exactly,
+list returns saved names, delete removes the file, invalid names are rejected,
+overwrite guard triggers on first save and clears on second.
+
+---
+
+## Phase 28 — Coverage Report
+
+### Overview
+
+The test suite has grown organically to 732 tests but coverage has not been
+measured.  This phase installs `pytest-cov`, generates a baseline report, and
+adds targeted tests to fill the most significant gaps.
+
+### T28.1 — Add pytest-cov and baseline report
+**Status:** not started
+
+`uv add --dev pytest-cov`.  Run `uv run pytest --cov=src --cov-report=term-missing -m "not integration" -q`
+and record the baseline line coverage percentage.  Identify the top five
+uncovered modules or functions by uncovered-line count.
+
+### T28.2 — Fill coverage gaps
+**Status:** not started
+
+Write targeted tests for the identified gaps.  Focus on branches and error
+paths that are hard to hit in normal use (e.g. malformed tool arguments,
+Ollama connection failures in specific code paths, edge cases in helpers).
+Aim for ≥ 85% overall line coverage.
+
+### T28.3 — Add coverage to CI
+**Status:** not started
+
+Update `.github/workflows/ci.yml` to run pytest with `--cov=src
+--cov-fail-under=85` so coverage regressions fail the build.
+
+---
+
+## Phase 29 — Docker Support
+
+### Overview
+
+Running the assistant currently requires manually installing Ollama, Python,
+UV, and all dependencies.  A `Dockerfile` and `compose.yml` package the
+Python application so it can be started with a single `docker compose up`,
+with Ollama running as a sidecar service.
+
+Several runtime tools make outbound network requests (web search, weather,
+currency, Wikipedia, URL reader) and some tools (image generation) require
+GPU access.  The compose configuration must expose the necessary ports and
+pass GPU resources through to the containers that need them.
+
+### T29.1 — Dockerfile
+**Status:** not started
+
+Write a `Dockerfile` based on `python:3.13-slim`.  Install UV, copy
+`pyproject.toml` and `uv.lock`, run `uv sync --frozen`, copy source.
+Expose port 7860 (Gradio default).  Set `CMD` to `uv run python assistant.py
+--no-tts --no-stt` as a sensible headless default (TTS/STT require system
+audio which is unavailable in most container environments).
+
+Network-dependent tools (web search, weather, currency, URL reader) work
+without additional port configuration as they make outbound HTTP requests.
+No inbound ports beyond 7860 are required for the app container itself.
+
+### T29.2 — docker-compose.yml
+**Status:** not started
+
+Write `compose.yml` with two services:
+
+**`ollama`** — uses the official `ollama/ollama` image.  Mount a named volume
+for model weights so they persist across restarts.  For GPU inference, add an
+NVIDIA runtime deploy block:
+```yaml
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities: [gpu]
+```
+This requires the host to have the NVIDIA Container Toolkit installed
+(`nvidia-ctk`).  Without a GPU the service still starts but Ollama runs in
+CPU mode and image generation will be unavailable.
+
+**`app`** — builds the Dockerfile above.  Set `OLLAMA_HOST=http://ollama:11434`
+so it connects to the sidecar.  Mount a `./sessions` volume for session
+persistence and a `./models.json` bind mount so users can supply a custom
+config without rebuilding the image.  Pass through any `OPENROUTER_API_KEY`
+from the host environment.  Include `depends_on: ollama` with a health-check
+(`curl -f http://ollama:11434/` with retries) so the app waits for Ollama to
+be ready before starting.  Expose port 7860.
+
+### T29.3 — Documentation
+**Status:** not started
+
+Update `README.md` with a Docker quick-start section covering:
+- Prerequisites: Docker, Docker Compose, and (for GPU) NVIDIA Container Toolkit
+- `docker compose up` to start both services
+- `docker compose exec ollama ollama pull gemma4:e4b` to pull the default model
+- How to supply a custom `models.json`
+- GPU pass-through note: image generation and fast Ollama inference require
+  the NVIDIA runtime; the compose file includes the deploy block but it is a
+  no-op on CPU-only hosts
 
 ---
 

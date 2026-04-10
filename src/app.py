@@ -15,6 +15,7 @@ import gradio as gr
 import ollama
 
 from src.helpers import suppress_connection_reset_errors
+from src.model_config import load_models
 from src.orchestrator import Orchestrator
 from src.process_audio import process_audio
 from src.process_text import process_text
@@ -24,7 +25,8 @@ from src.speech_output import KokoroSpeaker, check_kokoro_files
 from src.tools.registry import _TIER_RANK, REGISTRY
 from src.tools.reminders import REMINDER_STORE
 
-OLLAMA_MODEL_DEFAULT = "gemma4:e4b"
+_APP_MODEL_CONFIG = load_models()
+OLLAMA_MODEL_DEFAULT = _APP_MODEL_CONFIG["simple_llm"].model_id
 
 _MODAL_CSS = """
 #code-confirm-modal {
@@ -125,7 +127,7 @@ def _check_api_key() -> str | None:
     return None
 
 
-WHISPER_MODEL_DEFAULT = "medium"
+WHISPER_MODEL_DEFAULT = _APP_MODEL_CONFIG["whisper_stt_model"].model_id
 
 VOICES = [
     ("American Female", "af_heart"),
@@ -139,6 +141,9 @@ def build_app(
     whisper_model: str,
     ollama_model: str,
     startup_warning: str | None = None,
+    tts_enabled: bool = True,
+    stt_enabled: bool = True,
+    tools_enabled: bool = True,
 ) -> gr.Blocks:
     """Construct and return the Gradio Blocks application.
 
@@ -152,6 +157,13 @@ def build_app(
           query responses.
         startup_warning: Optional warning shown as the first chatbot
           message, e.g. when Ollama could not be started.
+        tts_enabled: When ``False``, skips KokoroSpeaker initialisation
+          and hides all TTS-related UI components.
+        stt_enabled: When ``False``, skips WhisperTranscriber initialisation
+          and hides all STT-related UI components.
+        tools_enabled: When ``False``, hides the Tools accordion and passes
+          an empty enabled-tools set to every orchestrator call so no tool
+          is ever dispatched.
 
     Returns:
         A configured ``gr.Blocks`` instance ready to launch.
@@ -160,8 +172,10 @@ def build_app(
     orchestrator = Orchestrator(
         ollama_model=ollama_model, session_id=session_id
     )
-    transcriber = WhisperTranscriber(model=whisper_model)
-    speaker = KokoroSpeaker()
+    transcriber = (
+        WhisperTranscriber(model=whisper_model) if stt_enabled else None
+    )
+    speaker = KokoroSpeaker() if tts_enabled else None
 
     with gr.Blocks(title="JM Assistant", css=_MODAL_CSS) as demo:
         with gr.Row():
@@ -177,14 +191,18 @@ def build_app(
 
         with gr.Row():
             input_mode = gr.Radio(
-                choices=["text", "speech"],
+                choices=["text", "speech"] if stt_enabled else ["text"],
                 value="text",
                 label="Input Mode",
+                visible=stt_enabled,
             )
             output_mode = gr.Radio(
-                choices=["text", "text and speech"],
+                choices=(
+                    ["text", "text and speech"] if tts_enabled else ["text"]
+                ),
                 value="text",
                 label="Output Mode",
+                visible=tts_enabled,
             )
             height_selector = gr.Dropdown(
                 choices=["3 lines", "5 lines", "10 lines", "20 lines"],
@@ -199,6 +217,7 @@ def build_app(
                 choices=VOICES,
                 value="af_heart",
                 label="Voice",
+                visible=tts_enabled,
             )
             memory_checkbox = gr.Checkbox(
                 value=True,
@@ -238,12 +257,14 @@ def build_app(
             sources=["microphone"],
             label="Speak",
             visible=False,
+            render=stt_enabled,
         )
 
         audio_output = gr.Audio(
             label="Response audio",
             autoplay=True,
             visible=False,
+            render=tts_enabled,
         )
 
         image_output = gr.Image(
@@ -272,30 +293,41 @@ def build_app(
             outputs=memory_status,
         )
 
+        # ── Models accordion ────────────────────────────────────────────────
+        _model_cfg = _APP_MODEL_CONFIG
+        _model_lines = "\n".join(
+            f"- **{cfg.display_name}** ({cfg.provider})"
+            for cfg in _model_cfg.values()
+        )
+        with gr.Accordion("Models", open=False):
+            gr.Markdown(_model_lines)
+
         # ── Tools accordion ─────────────────────────────────────────────────
-        _all_tools = REGISTRY.all()
+        _all_tools = REGISTRY.all() if tools_enabled else []
         _max_rank = (
-            _TIER_RANK["complex_opus"]
+            _TIER_RANK["complex_llm"]
             if os.environ.get("OPENROUTER_API_KEY")
-            else _TIER_RANK["simple_ollama"]
+            else _TIER_RANK["simple_llm"]
         )
         _TIER_DISPLAY = {
-            "trivial_ollama": "Ollama (fast)",
-            "simple_ollama": "Ollama",
-            "complex_sonnet": "Claude Sonnet",
-            "complex_opus": "Claude Opus",
+            "trivial_llm": "Ollama (fast)",
+            "simple_llm": "Ollama",
+            "advanced_llm": "Claude Sonnet",
+            "complex_llm": "Claude Opus",
         }
 
         def _achievable(tool) -> bool:
             return _TIER_RANK.get(tool.min_tier, 0) <= _max_rank
 
-        _init_enabled = {
-            t.name for t in _all_tools if t.default_enabled and _achievable(t)
-        }
+        _init_enabled: set = (
+            {t.name for t in _all_tools if t.default_enabled and _achievable(t)}
+            if tools_enabled
+            else set()
+        )
         _tool_count = len(_all_tools)
         tools_state = gr.State(_init_enabled)
 
-        with gr.Accordion("Tools", open=False):
+        with gr.Accordion("Tools", open=False, render=tools_enabled):
             tools_status = gr.Markdown(
                 f"Tools: {len(_init_enabled)} / {_tool_count} enabled"
             )
@@ -361,6 +393,15 @@ def build_app(
         # ── Mode switching ──────────────────────────────────────────────────
 
         def toggle_input_mode(mode):
+            """Show text or speech input components based on selected mode.
+
+            Args:
+                mode: Input mode string — ``"text"`` or ``"speech"``.
+
+            Returns:
+                Three ``gr.update`` dicts controlling visibility of the text
+                input, submit button, and audio input respectively.
+            """
             text_vis = mode == "text"
             speech_vis = mode == "speech"
             return (
@@ -370,6 +411,14 @@ def build_app(
             )
 
         def toggle_output_mode(mode):
+            """Show or hide the audio output component based on output mode.
+
+            Args:
+                mode: Output mode string — ``"text"`` or ``"text and speech"``.
+
+            Returns:
+                A ``gr.update`` dict controlling audio output visibility.
+            """
             return gr.update(visible=mode == "text and speech")
 
         input_mode.change(
@@ -379,6 +428,15 @@ def build_app(
         )
 
         def set_chatbot_height(choice):
+            """Update the chatbot panel height based on the selected size.
+
+            Args:
+                choice: One of the keys in ``_LINE_HEIGHTS``
+                  (e.g. ``"compact"``, ``"standard"``, ``"large"``).
+
+            Returns:
+                A ``gr.update`` dict setting the chatbot ``height`` in pixels.
+            """
             return gr.update(height=_LINE_HEIGHTS[choice])
 
         output_mode.change(
@@ -728,7 +786,7 @@ def build_app(
             updated = list(history) + new_msgs
             return updated, updated
 
-        reminder_timer = gr.Timer(value=10, active=True)
+        reminder_timer = gr.Timer(value=10, active=tools_enabled)
         reminder_timer.tick(
             fn=_check_reminders,
             inputs=[history_state],
@@ -742,27 +800,45 @@ def main():
     """Parse CLI arguments and launch the Gradio app."""
     parser = argparse.ArgumentParser(description="JM Assistant")
     parser.add_argument(
-        "--whisper-model",
-        default=WHISPER_MODEL_DEFAULT,
-        help="Whisper model size (default: medium)",
-    )
-    parser.add_argument(
         "--ollama-model",
         default=OLLAMA_MODEL_DEFAULT,
         help="Ollama model name",
     )
+    parser.add_argument(
+        "--no-tts",
+        action="store_true",
+        help="Disable text-to-speech output",
+    )
+    parser.add_argument(
+        "--no-stt",
+        action="store_true",
+        help="Disable speech-to-text input",
+    )
+    parser.add_argument(
+        "--no-tools",
+        action="store_true",
+        help="Disable all tool use and hide the Tools accordion",
+    )
     args = parser.parse_args()
     suppress_connection_reset_errors()
     startup_warnings = []
+    kokoro_warn = None if args.no_tts else check_kokoro_files()
     for warn in (
         _ensure_ollama(),
         _check_ollama_models(OLLAMA_FAST_MODEL, args.ollama_model),
         _check_api_key(),
-        check_kokoro_files(),
+        kokoro_warn,
     ):
         if warn:
             print(f"Warning: {warn}")
             startup_warnings.append(warn)
     startup_warning = "\n\n".join(startup_warnings) or None
-    demo = build_app(args.whisper_model, args.ollama_model, startup_warning)
+    demo = build_app(
+        WHISPER_MODEL_DEFAULT,
+        args.ollama_model,
+        startup_warning,
+        tts_enabled=not args.no_tts,
+        stt_enabled=not args.no_stt,
+        tools_enabled=not args.no_tools,
+    )
     demo.launch()

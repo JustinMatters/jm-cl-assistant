@@ -12,6 +12,7 @@ from uuid import uuid4
 import ollama
 
 from src.memory.store import MemoryStore
+from src.model_config import load_models
 from src.openrouter_client import (
     OPUS_DISPLAY_NAME,
     SONNET_DISPLAY_NAME,
@@ -21,24 +22,31 @@ from src.router import OLLAMA_FAST_MODEL, OLLAMA_MODEL, OllamaRouter
 from src.tools.image_utils import decode_image, is_image_sentinel
 from src.tools.registry import REGISTRY
 
-# Model name prefixes (lowercase) that support vision/image input natively.
-# Used to decide whether an Ollama-routed query with an image attachment
-# should stay local or be escalated to Claude.
-_OLLAMA_VISION_MODELS: frozenset[str] = frozenset(
-    {
-        "gemma4",  # Google Gemma 4 — natively multimodal (adopted in T20.1)
-        "llava",  # LLaVA series
-        "moondream",  # Moondream
-        "bakllava",  # BakLLaVA
-        "minicpm-v",  # MiniCPM-V
-    }
+# Load model config once at module level so all Orchestrator instances
+# share the same configuration without re-reading the file.
+_MODEL_CONFIG = load_models()
+
+# Base-name prefixes (e.g. "gemma4") extracted from all vision-capable
+# Ollama model entries in the config.  A queried model is considered
+# vision-capable if its base name starts with any of these prefixes.
+_OLLAMA_VISION_PREFIXES: frozenset[str] = frozenset(
+    cfg.model_id.lower().split("/")[-1].split(":")[0]
+    for cfg in _MODEL_CONFIG.values()
+    if cfg.provider == "ollama" and cfg.vision
 )
 
 
 def _model_supports_vision(model_name: str) -> bool:
-    """Return True if model_name matches a known vision-capable model prefix."""
-    base = model_name.lower().split("/")[-1]
-    return any(base.startswith(p) for p in _OLLAMA_VISION_MODELS)
+    """Return True if model_name is a vision-capable Ollama model per config.
+
+    Matches by extracting the base name (stripping namespace and tag) and
+    checking whether it starts with any prefix derived from the configured
+    vision-capable Ollama models.  For example, if ``gemma4:e4b`` is
+    configured with ``vision: true``, then ``google/gemma4:12b`` also
+    matches.
+    """
+    base = model_name.lower().split("/")[-1].split(":")[0]
+    return any(base.startswith(p) for p in _OLLAMA_VISION_PREFIXES)
 
 
 class Orchestrator:
@@ -92,10 +100,10 @@ class Orchestrator:
         self._pending_execution: dict | None = None
         self._pending_image = None
         self._backend_labels = {
-            "trivial_ollama": f"Ollama: {fast_model.split('/')[-1]}",
-            "simple_ollama": f"Ollama: {ollama_model.split('/')[-1]}",
-            "complex_sonnet": f"OpenRouter: {SONNET_DISPLAY_NAME}",
-            "complex_opus": f"OpenRouter: {OPUS_DISPLAY_NAME}",
+            "trivial_llm": f"Ollama: {fast_model.split('/')[-1]}",
+            "simple_llm": f"Ollama: {ollama_model.split('/')[-1]}",
+            "advanced_llm": f"OpenRouter: {SONNET_DISPLAY_NAME}",
+            "complex_llm": f"OpenRouter: {OPUS_DISPLAY_NAME}",
         }
 
     def respond(
@@ -177,27 +185,27 @@ class Orchestrator:
             effective = (
                 classification
                 if classification in self._backend_labels
-                else "trivial_ollama"
+                else "trivial_llm"
             )
             # When an image is attached and the selected Ollama model does
             # not support vision, escalate to Claude Sonnet which does.
             if image is not None and effective in (
-                "trivial_ollama",
-                "simple_ollama",
+                "trivial_llm",
+                "simple_llm",
             ):
                 ollama_model = (
                     self._fast_model
-                    if effective == "trivial_ollama"
+                    if effective == "trivial_llm"
                     else self._ollama_model
                 )
                 if not _model_supports_vision(ollama_model):
-                    effective = "complex_sonnet"
+                    effective = "advanced_llm"
             self.last_backend = self._backend_labels[effective]
             b_schemas = REGISTRY.schemas(active_names)
             b_executor = (
                 self._make_b_executor(active_names) if b_schemas else None
             )
-            if effective == "trivial_ollama":
+            if effective == "trivial_llm":
                 response = self._ollama_respond(
                     query,
                     augmented,
@@ -206,7 +214,7 @@ class Orchestrator:
                     tool_executor=b_executor,
                     image=image,
                 )
-            elif effective == "simple_ollama":
+            elif effective == "simple_llm":
                 response = self._ollama_respond(
                     query,
                     augmented,
@@ -215,7 +223,7 @@ class Orchestrator:
                     tool_executor=b_executor,
                     image=image,
                 )
-            elif effective == "complex_sonnet":
+            elif effective == "advanced_llm":
                 response = self._claude.ask(
                     query,
                     "sonnet",

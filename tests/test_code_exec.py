@@ -118,7 +118,7 @@ class TestGlobalRegistration:
         assert tool.approach == "B"
         assert tool.default_enabled is False
         assert tool.requires_confirmation is True
-        assert tool.min_tier == "complex_sonnet"
+        assert tool.min_tier == "advanced_llm"
         assert tool.category == "code"
 
     def test_code_exec_has_parameters_schema(self):

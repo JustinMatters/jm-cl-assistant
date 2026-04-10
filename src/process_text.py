@@ -63,7 +63,7 @@ def process_text(
             "content": f"**{last_backend_fn()}:** {content}",
         }
         audio_out = None
-        if out_mode == "text and speech":
+        if speaker is not None and out_mode == "text and speech":
             speech_text = response if show else strip_think_tags(response)
             arr, sr = speaker.synthesize(
                 strip_markdown(speech_text), voice=voice

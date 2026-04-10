@@ -12,7 +12,7 @@ def _make_tool(
     description="A test tool",
     examples=None,
     default_enabled=True,
-    min_tier="trivial_ollama",
+    min_tier="trivial_llm",
     approach="A",
     callable_fn=None,
     category="general",
@@ -150,20 +150,18 @@ class TestDispatch:
                 callable_fn=lambda q: "42",
             )
         )
-        result = reg.dispatch(
-            "maths", "what is 6*7", {"calc"}, "trivial_ollama"
-        )
+        result = reg.dispatch("maths", "what is 6*7", {"calc"}, "trivial_llm")
         assert result == "42"
 
     def test_returns_none_when_no_matching_tier(self):
         reg = ToolRegistry()
-        result = reg.dispatch("unknown_tier", "query", set(), "trivial_ollama")
+        result = reg.dispatch("unknown_tier", "query", set(), "trivial_llm")
         assert result is None
 
     def test_returns_none_when_tool_disabled(self):
         reg = ToolRegistry()
         reg.register(_make_tool(name="t", router_tier="tier_x"))
-        result = reg.dispatch("tier_x", "query", set(), "trivial_ollama")
+        result = reg.dispatch("tier_x", "query", set(), "trivial_llm")
         assert result is None
 
     def test_min_tier_blocks_insufficient_model(self):
@@ -172,11 +170,11 @@ class TestDispatch:
             _make_tool(
                 name="powerful",
                 router_tier="exec",
-                min_tier="complex_sonnet",
+                min_tier="advanced_llm",
             )
         )
-        # trivial_ollama (rank 0) < complex_sonnet (rank 2) → blocked
-        result = reg.dispatch("exec", "query", {"powerful"}, "trivial_ollama")
+        # trivial_llm (rank 0) < advanced_llm (rank 2) → blocked
+        result = reg.dispatch("exec", "query", {"powerful"}, "trivial_llm")
         assert result is None
 
     def test_min_tier_allows_sufficient_model(self):
@@ -185,11 +183,11 @@ class TestDispatch:
             _make_tool(
                 name="powerful",
                 router_tier="exec",
-                min_tier="complex_sonnet",
+                min_tier="advanced_llm",
                 callable_fn=lambda q: "ok",
             )
         )
-        result = reg.dispatch("exec", "query", {"powerful"}, "complex_sonnet")
+        result = reg.dispatch("exec", "query", {"powerful"}, "advanced_llm")
         assert result == "ok"
 
     def test_min_tier_allows_higher_model(self):
@@ -198,11 +196,11 @@ class TestDispatch:
             _make_tool(
                 name="t",
                 router_tier="r",
-                min_tier="simple_ollama",
+                min_tier="simple_llm",
                 callable_fn=lambda q: "result",
             )
         )
-        result = reg.dispatch("r", "query", {"t"}, "complex_opus")
+        result = reg.dispatch("r", "query", {"t"}, "complex_llm")
         assert result == "result"
 
     def test_tool_returning_none_propagates(self):
@@ -214,7 +212,7 @@ class TestDispatch:
                 callable_fn=lambda q: None,
             )
         )
-        result = reg.dispatch("r", "query", {"t"}, "trivial_ollama")
+        result = reg.dispatch("r", "query", {"t"}, "trivial_llm")
         assert result is None
 
     def test_query_passed_to_callable(self):
@@ -227,7 +225,7 @@ class TestDispatch:
                 callable_fn=lambda q: received.append(q) or "ok",
             )
         )
-        reg.dispatch("r", "my query", {"t"}, "trivial_ollama")
+        reg.dispatch("r", "my query", {"t"}, "trivial_llm")
         assert received == ["my query"]
 
 
@@ -280,9 +278,7 @@ class TestDispatchWithStore:
             _make_tool(name="t", router_tier="r", callable_fn=store_aware)
         )
         mock_store = object()
-        result = reg.dispatch(
-            "r", "q", {"t"}, "trivial_ollama", store=mock_store
-        )
+        result = reg.dispatch("r", "q", {"t"}, "trivial_llm", store=mock_store)
         assert result == "ok"
         assert received["store"] is mock_store
 
@@ -296,9 +292,7 @@ class TestDispatchWithStore:
         reg = ToolRegistry()
         reg.register(_make_tool(name="t", router_tier="r", callable_fn=plain))
         mock_store = object()
-        result = reg.dispatch(
-            "r", "q", {"t"}, "trivial_ollama", store=mock_store
-        )
+        result = reg.dispatch("r", "q", {"t"}, "trivial_llm", store=mock_store)
         assert result == "plain"
         assert received.get("called") is True
 
@@ -313,7 +307,7 @@ class TestDispatchWithStore:
         reg.register(
             _make_tool(name="t", router_tier="r", callable_fn=store_aware)
         )
-        reg.dispatch("r", "q", {"t"}, "trivial_ollama", store=None)
+        reg.dispatch("r", "q", {"t"}, "trivial_llm", store=None)
         assert received["store"] is None
 
     def test_tool_can_call_add_on_store(self, mocker):
@@ -329,7 +323,7 @@ class TestDispatchWithStore:
             _make_tool(name="t", router_tier="r", callable_fn=store_aware)
         )
         result = reg.dispatch(
-            "r", "hello", {"t"}, "trivial_ollama", store=mock_store
+            "r", "hello", {"t"}, "trivial_llm", store=mock_store
         )
         assert result == "done"
         mock_store.add.assert_called_once_with(

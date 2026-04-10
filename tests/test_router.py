@@ -38,10 +38,10 @@ COMPLEX_OPUS_QUERIES = [
 ]
 
 VALID_CLASSIFICATIONS = {
-    "trivial_ollama",
-    "simple_ollama",
-    "complex_sonnet",
-    "complex_opus",
+    "trivial_llm",
+    "simple_llm",
+    "advanced_llm",
+    "complex_llm",
     "maths",
     "convert",
 }
@@ -64,83 +64,81 @@ CONVERT_QUERIES = [
 class TestOllamaRouterClassify:
     def test_returns_valid_classification_for_trivial_query(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "trivial_ollama"}}
+        mock_client.return_value = {"message": {"content": "trivial_llm"}}
         router = OllamaRouter()
         result = router.classify(TRIVIAL_QUERIES[0])
         assert result in VALID_CLASSIFICATIONS
 
-    def test_trivial_query_classified_as_trivial_ollama(self, mocker):
+    def test_trivial_query_classified_as_trivial_llm(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "trivial_ollama"}}
+        mock_client.return_value = {"message": {"content": "trivial_llm"}}
         router = OllamaRouter()
         result = router.classify(TRIVIAL_QUERIES[0])
-        assert result == "trivial_ollama"
+        assert result == "trivial_llm"
 
     def test_returns_valid_classification_for_simple_query(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "simple_ollama"}}
+        mock_client.return_value = {"message": {"content": "simple_llm"}}
         router = OllamaRouter()
         result = router.classify(SIMPLE_QUERIES[0])
         assert result in VALID_CLASSIFICATIONS
 
-    def test_simple_query_classified_as_simple_ollama(self, mocker):
+    def test_simple_query_classified_as_simple_llm(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "simple_ollama"}}
+        mock_client.return_value = {"message": {"content": "simple_llm"}}
         router = OllamaRouter()
         result = router.classify(SIMPLE_QUERIES[0])
-        assert result == "simple_ollama"
+        assert result == "simple_llm"
 
-    def test_moderate_query_classified_as_complex_sonnet(self, mocker):
+    def test_moderate_query_classified_as_advanced_llm(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "complex_sonnet"}}
+        mock_client.return_value = {"message": {"content": "advanced_llm"}}
         router = OllamaRouter()
         result = router.classify(COMPLEX_SONNET_QUERIES[0])
-        assert result == "complex_sonnet"
+        assert result == "advanced_llm"
 
-    def test_hard_query_classified_as_complex_opus(self, mocker):
+    def test_hard_query_classified_as_complex_llm(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "complex_opus"}}
+        mock_client.return_value = {"message": {"content": "complex_llm"}}
         router = OllamaRouter()
         result = router.classify(COMPLEX_OPUS_QUERIES[0])
-        assert result == "complex_opus"
+        assert result == "complex_llm"
 
     def test_empty_input_returns_valid_classification(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "trivial_ollama"}}
+        mock_client.return_value = {"message": {"content": "trivial_llm"}}
         router = OllamaRouter()
         result = router.classify("")
         assert result in VALID_CLASSIFICATIONS
 
     def test_non_english_input_returns_valid_classification(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "simple_ollama"}}
+        mock_client.return_value = {"message": {"content": "simple_llm"}}
         router = OllamaRouter()
         result = router.classify("Quelle est la capitale de la France?")
         assert result in VALID_CLASSIFICATIONS
 
-    def test_unparseable_model_output_falls_back_to_trivial_ollama(
-        self, mocker
-    ):
+    def test_unparseable_model_output_falls_back_to_trivial_llm(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
         mock_client.return_value = {
             "message": {"content": "I am unable to determine this."}
         }
         router = OllamaRouter()
         result = router.classify(SIMPLE_QUERIES[0])
-        assert result == "trivial_ollama"
+        assert result == "trivial_llm"
 
     def test_whitespace_padded_response_is_handled(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
         mock_client.return_value = {
-            "message": {"content": "  complex_sonnet  \n"}
+            "message": {"content": "  advanced_llm  \n"}
         }
         router = OllamaRouter()
         result = router.classify(COMPLEX_SONNET_QUERIES[0])
-        assert result == "complex_sonnet"
+        assert result == "advanced_llm"
 
     def test_ollama_client_is_called_once_per_classify(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "trivial_ollama"}}
+        mock_client.return_value = {"message": {"content": "trivial_llm"}}
         router = OllamaRouter()
         router.classify(SIMPLE_QUERIES[0])
         mock_client.assert_called_once()
@@ -148,7 +146,7 @@ class TestOllamaRouterClassify:
     @pytest.mark.parametrize("query", SIMPLE_QUERIES)
     def test_multiple_simple_queries_all_return_valid(self, mocker, query):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "simple_ollama"}}
+        mock_client.return_value = {"message": {"content": "simple_llm"}}
         router = OllamaRouter()
         result = router.classify(query)
         assert result in VALID_CLASSIFICATIONS
@@ -215,14 +213,14 @@ class TestDynamicRouter:
         mock_client.return_value = {"message": {"content": "maths"}}
         router = OllamaRouter()
         result = router.classify("2 + 2", set())
-        assert result == "trivial_ollama"
+        assert result == "trivial_llm"
 
     def test_tool_tier_falls_back_when_no_tools_arg(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
         mock_client.return_value = {"message": {"content": "maths"}}
         router = OllamaRouter()
         result = router.classify("2 + 2")
-        assert result == "trivial_ollama"
+        assert result == "trivial_llm"
 
     def test_enabled_tool_tier_in_system_prompt(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
@@ -235,7 +233,7 @@ class TestDynamicRouter:
 
     def test_disabled_tool_tier_absent_from_system_prompt(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "trivial_ollama"}}
+        mock_client.return_value = {"message": {"content": "trivial_llm"}}
         router = OllamaRouter()
         router.classify("2 + 2", set())
         msgs = mock_client.call_args.kwargs["messages"]
@@ -245,7 +243,7 @@ class TestDynamicRouter:
 
     def test_both_tools_enabled_both_tiers_in_prompt(self, mocker):
         mock_client = mocker.patch("src.router.ollama.chat")
-        mock_client.return_value = {"message": {"content": "trivial_ollama"}}
+        mock_client.return_value = {"message": {"content": "trivial_llm"}}
         router = OllamaRouter()
         router.classify("hi", {"calculator", "converter"})
         msgs = mock_client.call_args.kwargs["messages"]
@@ -255,32 +253,32 @@ class TestDynamicRouter:
 
 
 class TestOllamaRouterErrorHandling:
-    def test_connection_error_falls_back_to_trivial_ollama(self, mocker):
+    def test_connection_error_falls_back_to_trivial_llm(self, mocker):
         mocker.patch(
             "src.router.ollama.chat",
             side_effect=ConnectionError("Ollama not running"),
         )
         router = OllamaRouter()
         result = router.classify("hi")
-        assert result == "trivial_ollama"
+        assert result == "trivial_llm"
 
-    def test_response_error_falls_back_to_trivial_ollama(self, mocker):
+    def test_response_error_falls_back_to_trivial_llm(self, mocker):
         mocker.patch(
             "src.router.ollama.chat",
             side_effect=Exception("ResponseError: model not found"),
         )
         router = OllamaRouter()
         result = router.classify("hi")
-        assert result == "trivial_ollama"
+        assert result == "trivial_llm"
 
-    def test_generic_exception_falls_back_to_trivial_ollama(self, mocker):
+    def test_generic_exception_falls_back_to_trivial_llm(self, mocker):
         mocker.patch(
             "src.router.ollama.chat",
             side_effect=RuntimeError("unexpected failure"),
         )
         router = OllamaRouter()
         result = router.classify("hi")
-        assert result == "trivial_ollama"
+        assert result == "trivial_llm"
 
     def test_connection_error_emits_warning(self, mocker):
         mocker.patch(

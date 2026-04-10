@@ -1,0 +1,54 @@
+{
+  "models": [
+    {
+      "role": "trivial_llm",
+      "provider": "ollama",
+      "model_id": "qwen3:1.7b",
+      "display_name": "Qwen3 1.7B",
+      "vision": false
+    },
+    {
+      "role": "simple_llm",
+      "provider": "ollama",
+      "model_id": "gemma4:e4b",
+      "display_name": "Gemma 4 (4B)",
+      "vision": true
+    },
+    {
+      "role": "advanced_llm",
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-sonnet-4-6",
+      "display_name": "Claude Sonnet 4.6",
+      "vision": true
+    },
+    {
+      "role": "complex_llm",
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-opus-4-6",
+      "display_name": "Claude Opus 4.6",
+      "vision": true
+    },
+    {
+      "role": "vector_db_embedding",
+      "provider": "ollama",
+      "model_id": "nomic-embed-text",
+      "display_name": "Nomic Embed Text",
+      "vision": false
+    },
+    {
+      "role": "whisper_stt_model",
+      "provider": "local",
+      "model_id": "medium",
+      "display_name": "Whisper medium",
+      "vision": false
+    },
+    {
+      "role": "diffusers_image_gen_model",
+      "provider": "local",
+      "model_id": "stabilityai/sdxl-turbo",
+      "display_name": "SDXL-Turbo",
+      "vision": false,
+      "diffusers_max_image_dimension": 512
+    }
+  ]
+}

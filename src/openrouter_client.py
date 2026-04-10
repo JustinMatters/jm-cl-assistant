@@ -13,13 +13,16 @@ from typing import TYPE_CHECKING, Literal
 
 import openai
 
+from src.model_config import load_models
+
 if TYPE_CHECKING:
     from PIL.Image import Image as PILImage
 
-SONNET_MODEL_ID = "anthropic/claude-sonnet-4-6"
-OPUS_MODEL_ID = "anthropic/claude-opus-4-6"
-SONNET_DISPLAY_NAME = "Claude Sonnet"
-OPUS_DISPLAY_NAME = "Claude Opus"
+_MODEL_CONFIG = load_models()
+SONNET_MODEL_ID = _MODEL_CONFIG["advanced_llm"].model_id
+OPUS_MODEL_ID = _MODEL_CONFIG["complex_llm"].model_id
+SONNET_DISPLAY_NAME = _MODEL_CONFIG["advanced_llm"].display_name
+OPUS_DISPLAY_NAME = _MODEL_CONFIG["complex_llm"].display_name
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 _MODEL_MAP = {

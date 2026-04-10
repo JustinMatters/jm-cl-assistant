@@ -26,12 +26,14 @@ import urllib.request
 
 from PIL import Image
 
+from src.model_config import load_models
 from src.tools.image_utils import encode_image
 from src.tools.registry import REGISTRY, ToolDefinition
 
-_SDXL_MODEL = "stabilityai/sdxl-turbo"
+_IMAGE_GEN_CONFIG = load_models()["diffusers_image_gen_model"]
+_SDXL_MODEL = _IMAGE_GEN_CONFIG.model_id
 _OPENVERSE_SEARCH = "https://api.openverse.org/v1/images/"
-_MAX_IMG_DIM = 512  # SDXL-Turbo native resolution
+_MAX_IMG_DIM = _IMAGE_GEN_CONFIG.diffusers_max_image_dimension
 
 _PARAMETERS_SCHEMA = {
     "type": "object",
@@ -85,7 +87,7 @@ def _generate_local(prompt: str) -> bytes:
         Exception: On model load or inference failure.
     """
     import torch
-    from diffusers import AutoPipelineForText2Image
+    from diffusers.pipelines.auto_pipeline import AutoPipelineForText2Image
 
     global _pipeline  # noqa: PLW0603
 
@@ -150,7 +152,7 @@ def _search_cc0(prompt: str) -> bytes:
     img = Image.open(io.BytesIO(raw)).convert("RGB")
     # Resize if very large to keep response size reasonable.
     if max(img.size) > 1024:
-        img.thumbnail((1024, 1024), Image.LANCZOS)
+        img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
     return encode_image(img)
 
 
@@ -231,7 +233,7 @@ REGISTRY.register(
             "draw a forest at night",
         ],
         default_enabled=False,
-        min_tier="complex_sonnet",
+        min_tier="advanced_llm",
         approach="B",
         callable=_image_gen_callable,
         category="visual",

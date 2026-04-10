@@ -257,7 +257,7 @@ REGISTRY.register(
             "1000 JPY in USD",
         ],
         default_enabled=True,
-        min_tier="trivial_ollama",
+        min_tier="trivial_llm",
         approach="A",
         callable=_handle_currency_query,
         category="web",

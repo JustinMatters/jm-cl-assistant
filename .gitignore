@@ -87,3 +87,6 @@ research/
 
 # ChromaDB vector store (local data — not committed)
 chroma_db/
+
+# User model configuration (copy models.json.example to customise)
+models.json

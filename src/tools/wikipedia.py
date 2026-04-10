@@ -147,7 +147,7 @@ REGISTRY.register(
             "summary of the French Revolution",
         ],
         default_enabled=True,
-        min_tier="simple_ollama",
+        min_tier="simple_llm",
         approach="B",
         callable=_wiki_callable,
         category="web",

@@ -21,7 +21,7 @@ class TestOrchestratorRespond:
         return Orchestrator(session_id="test-session", memory_enabled=False)
 
     def test_trivial_query_answered_by_fast_ollama(self, mocker):
-        orch = self._make_orchestrator(mocker, "trivial_ollama")
+        orch = self._make_orchestrator(mocker, "trivial_llm")
         mock_ollama = mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="Hello!",
@@ -33,7 +33,7 @@ class TestOrchestratorRespond:
         assert response == "Hello!"
 
     def test_simple_query_answered_by_slow_ollama(self, mocker):
-        orch = self._make_orchestrator(mocker, "simple_ollama")
+        orch = self._make_orchestrator(mocker, "simple_llm")
         mock_ollama = mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="Paris",
@@ -44,8 +44,8 @@ class TestOrchestratorRespond:
         assert model_arg == orch._ollama_model
         assert response == "Paris"
 
-    def test_complex_sonnet_query_answered_by_claude_sonnet(self, mocker):
-        orch = self._make_orchestrator(mocker, "complex_sonnet")
+    def test_advanced_llm_query_answered_by_claude_sonnet(self, mocker):
+        orch = self._make_orchestrator(mocker, "advanced_llm")
         mock_claude = mocker.patch(
             "src.orchestrator.OpenRouterClient.ask",
             return_value="A detailed answer.",
@@ -61,8 +61,8 @@ class TestOrchestratorRespond:
         )
         assert response == "A detailed answer."
 
-    def test_complex_opus_query_answered_by_claude_opus(self, mocker):
-        orch = self._make_orchestrator(mocker, "complex_opus")
+    def test_complex_llm_query_answered_by_claude_opus(self, mocker):
+        orch = self._make_orchestrator(mocker, "complex_llm")
         mock_claude = mocker.patch(
             "src.orchestrator.OpenRouterClient.ask",
             return_value="A highly detailed answer.",
@@ -79,7 +79,7 @@ class TestOrchestratorRespond:
         assert response == "A highly detailed answer."
 
     def test_history_is_returned_updated(self, mocker):
-        orch = self._make_orchestrator(mocker, "trivial_ollama")
+        orch = self._make_orchestrator(mocker, "trivial_llm")
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="Paris",
@@ -88,7 +88,7 @@ class TestOrchestratorRespond:
         assert len(history) > 0
 
     def test_existing_history_is_preserved(self, mocker):
-        orch = self._make_orchestrator(mocker, "simple_ollama")
+        orch = self._make_orchestrator(mocker, "simple_llm")
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="Berlin",
@@ -101,7 +101,7 @@ class TestOrchestratorRespond:
         assert len(history) > len(prior_history)
 
     def test_respond_returns_tuple_of_str_and_list(self, mocker):
-        orch = self._make_orchestrator(mocker, "trivial_ollama")
+        orch = self._make_orchestrator(mocker, "trivial_llm")
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="answer",
@@ -111,8 +111,8 @@ class TestOrchestratorRespond:
         assert isinstance(result[0], str)
         assert isinstance(result[1], list)
 
-    def test_ollama_not_called_for_complex_sonnet(self, mocker):
-        orch = self._make_orchestrator(mocker, "complex_sonnet")
+    def test_ollama_not_called_for_advanced_llm(self, mocker):
+        orch = self._make_orchestrator(mocker, "advanced_llm")
         mock_ollama = mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond"
         )
@@ -123,8 +123,8 @@ class TestOrchestratorRespond:
         orch.respond("A complex question.", [])
         mock_ollama.assert_not_called()
 
-    def test_ollama_not_called_for_complex_opus(self, mocker):
-        orch = self._make_orchestrator(mocker, "complex_opus")
+    def test_ollama_not_called_for_complex_llm(self, mocker):
+        orch = self._make_orchestrator(mocker, "complex_llm")
         mock_ollama = mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond"
         )
@@ -136,7 +136,7 @@ class TestOrchestratorRespond:
         mock_ollama.assert_not_called()
 
     def test_claude_not_called_for_trivial_query(self, mocker):
-        orch = self._make_orchestrator(mocker, "trivial_ollama")
+        orch = self._make_orchestrator(mocker, "trivial_llm")
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="answer",
@@ -146,7 +146,7 @@ class TestOrchestratorRespond:
         mock_claude.assert_not_called()
 
     def test_claude_not_called_for_simple_query(self, mocker):
-        orch = self._make_orchestrator(mocker, "simple_ollama")
+        orch = self._make_orchestrator(mocker, "simple_llm")
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",
             return_value="answer",
@@ -160,7 +160,7 @@ class TestOrchestratorOllamaErrorHandling:
     def test_connection_error_returns_friendly_string(self, mocker):
         mocker.patch(
             "src.orchestrator.OllamaRouter.classify",
-            return_value="trivial_ollama",
+            return_value="trivial_llm",
         )
         mocker.patch(
             "src.orchestrator.ollama.chat",
@@ -173,7 +173,7 @@ class TestOrchestratorOllamaErrorHandling:
     def test_response_error_returns_friendly_string(self, mocker):
         mocker.patch(
             "src.orchestrator.OllamaRouter.classify",
-            return_value="simple_ollama",
+            return_value="simple_llm",
         )
         mocker.patch(
             "src.orchestrator.ollama.chat",
@@ -186,7 +186,7 @@ class TestOrchestratorOllamaErrorHandling:
     def test_ollama_error_still_updates_history(self, mocker):
         mocker.patch(
             "src.orchestrator.OllamaRouter.classify",
-            return_value="trivial_ollama",
+            return_value="trivial_llm",
         )
         mocker.patch(
             "src.orchestrator.ollama.chat",
@@ -205,7 +205,7 @@ class TestContextInjection:
     def _make_orch_with_memory(self, mocker, context_block):
         mocker.patch(
             "src.orchestrator.OllamaRouter.classify",
-            return_value="trivial_ollama",
+            return_value="trivial_llm",
         )
         orch = Orchestrator(session_id="test-session", memory_enabled=False)
         mock_memory = MagicMock()
@@ -260,7 +260,7 @@ class TestMemoryEnabledPerCall:
     def _make_orch(self, mocker):
         mocker.patch(
             "src.orchestrator.OllamaRouter.classify",
-            return_value="trivial_ollama",
+            return_value="trivial_llm",
         )
         mocker.patch(
             "src.orchestrator.Orchestrator._ollama_respond",

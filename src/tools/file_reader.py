@@ -220,7 +220,7 @@ REGISTRY.register(
             "extract text from https://example.com/paper.docx",
         ],
         default_enabled=True,
-        min_tier="complex_sonnet",
+        min_tier="advanced_llm",
         approach="B",
         callable=_file_reader_callable,
         category="files",

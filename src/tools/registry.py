@@ -23,12 +23,12 @@ if TYPE_CHECKING:
 # Rank table used to enforce min_tier at dispatch time.
 # Tool tiers (e.g. "maths", "convert") are absent from this table;
 # _TIER_RANK.get() defaults to 0 for unknown keys, making all Approach A
-# tools with min_tier="trivial_ollama" (rank 0) always reachable.
+# tools with min_tier="trivial_llm" (rank 0) always reachable.
 _TIER_RANK: dict[str, int] = {
-    "trivial_ollama": 0,
-    "simple_ollama": 1,
-    "complex_sonnet": 2,
-    "complex_opus": 3,
+    "trivial_llm": 0,
+    "simple_llm": 1,
+    "advanced_llm": 2,
+    "complex_llm": 3,
 }
 
 
@@ -54,8 +54,8 @@ class ToolDefinition:
         default_enabled: Whether the tool is active before the user
           changes any UI toggle.
         min_tier: Minimum route tier required to invoke this tool.
-          One of ``trivial_ollama``, ``simple_ollama``,
-          ``complex_sonnet``, ``complex_opus``.
+          One of ``trivial_llm``, ``simple_llm``,
+          ``advanced_llm``, ``complex_llm``.
         approach: ``"A"`` for router-dispatched (direct callable) or
           ``"B"`` for LLM function calling.
         callable: Function called with the raw query string; returns a
@@ -80,7 +80,7 @@ class ToolDefinition:
     default_enabled: bool
     min_tier: str
     approach: str
-    callable: Callable[..., str | None]
+    callable: Callable[..., str | bytes | None]
     category: str = "general"
     is_async: bool = False
     parameters_schema: dict | None = None

@@ -113,7 +113,7 @@ REGISTRY.register(
             "diagram the states of a traffic light",
         ],
         default_enabled=True,
-        min_tier="complex_sonnet",
+        min_tier="advanced_llm",
         approach="B",
         callable=_flowchart_callable,
         category="visual",

@@ -128,7 +128,7 @@ REGISTRY.register(
             "2**10",
         ],
         default_enabled=True,
-        min_tier="trivial_ollama",
+        min_tier="trivial_llm",
         approach="A",
         callable=_handle_maths_query,
         category="maths",

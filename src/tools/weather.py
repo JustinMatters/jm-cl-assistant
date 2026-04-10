@@ -210,7 +210,7 @@ REGISTRY.register(
             "what is the weather today",
         ],
         default_enabled=True,
-        min_tier="trivial_ollama",
+        min_tier="trivial_llm",
         approach="A",
         callable=_handle_weather_query,
         category="web",

@@ -172,7 +172,7 @@ REGISTRY.register(
             "read this link for me",
         ],
         default_enabled=True,
-        min_tier="complex_sonnet",
+        min_tier="advanced_llm",
         approach="B",
         callable=_url_reader_callable,
         category="web",

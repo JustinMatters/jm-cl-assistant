@@ -287,7 +287,7 @@ REGISTRY.register(
             "scatter plot of age vs income from survey.csv",
         ],
         default_enabled=True,
-        min_tier="complex_sonnet",
+        min_tier="advanced_llm",
         approach="B",
         callable=_data_analysis_callable,
         category="files",
