@@ -6,9 +6,12 @@ response.  Extracted from the Gradio event handler so the logic can be
 unit-tested without Gradio.
 """
 
+from collections.abc import Iterator
+
 import numpy as np
 
 from src.helpers import strip_markdown, strip_think_tags, to_wav_bytes
+from src.process_text import stream_process_text
 
 
 def _audio_err(history: list, msg: str) -> list:
@@ -148,3 +151,100 @@ def process_audio(
         audio_out = to_wav_bytes(arr, sr)
 
     return display_history, updated_history, audio_out
+
+
+def stream_process_audio(
+    audio_data,
+    history: list,
+    out_mode: str,
+    show: bool,
+    voice: str,
+    transcriber,
+    orchestrator,
+    speaker,
+    memory_enabled: bool = True,
+    enabled_tools: set | None = None,
+) -> Iterator[tuple[list, list | None, bytes | None]]:
+    """Validate, transcribe, and stream a response to audio input.
+
+    Performs the same validation and normalisation as ``process_audio``,
+    then delegates to ``stream_process_text`` for the LLM streaming path.
+    Yields nothing on silent or invalid input.  Error yields produce a
+    single final tuple with the original history unchanged.
+
+    Args:
+        audio_data: ``(sample_rate, audio_array)`` tuple from
+          ``gr.Audio``, or ``None`` if no recording is present.
+        history: Current conversation history.
+        out_mode: Output mode — ``"text"`` or ``"text and speech"``.
+        show: Whether to show ``<think>`` tags in the response.
+        voice: Kokoro voice ID for TTS synthesis.
+        transcriber: ``WhisperTranscriber`` instance.
+        orchestrator: ``Orchestrator`` instance.
+        speaker: ``KokoroSpeaker`` instance.
+        memory_enabled: When ``False``, memory reads/writes are skipped.
+        enabled_tools: Set of tool names currently active in the UI.
+          ``None`` falls back to per-tool ``default_enabled`` flags.
+
+    Yields:
+        ``(display_history, updated_history_or_none, audio_out)`` —
+        same contract as ``stream_process_text``.  Yields nothing when
+        ``audio_data`` is ``None`` or the audio array is empty.
+    """
+    if audio_data is None:
+        return
+
+    sample_rate, audio_array = audio_data
+    if audio_array is None or sample_rate is None or len(audio_array) == 0:
+        return
+
+    is_numeric = isinstance(sample_rate, (int, float))
+    sr_val = int(sample_rate) if is_numeric else 0
+    if sr_val <= 0:
+        yield (
+            _audio_err(history, "invalid sample rate — please try again"),
+            history,
+            None,
+        )
+        return
+
+    if audio_array.dtype in (np.float32, np.float64):
+        float_audio = audio_array.astype(np.float32)
+    elif audio_array.dtype == np.int32:
+        float_audio = audio_array.astype(np.float32) / 2_147_483_648.0
+    else:
+        float_audio = audio_array.astype(np.float32) / 32_768.0
+
+    try:
+        query = transcriber.transcribe(float_audio, sr_val)
+    except Exception as exc:
+        yield (
+            _audio_err(history, f"transcription failed: {exc}"),
+            history,
+            None,
+        )
+        return
+
+    if not query.strip():
+        yield (
+            _audio_err(
+                history,
+                "could not understand audio — please try again",
+            ),
+            history,
+            None,
+        )
+        return
+
+    yield from stream_process_text(
+        query,
+        history,
+        out_mode,
+        show,
+        voice,
+        orchestrator,
+        speaker,
+        lambda: orchestrator.last_backend,
+        memory_enabled=memory_enabled,
+        enabled_tools=enabled_tools,
+    )

@@ -8,7 +8,7 @@ variable to be set.
 import base64
 import io
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Literal
 
 import openai
@@ -181,3 +181,70 @@ class OpenRouterClient:
                     f"(Tool loop reached {max_tool_iterations} iterations"
                     " without a final response)"
                 )
+
+    def stream_ask(
+        self,
+        query: str,
+        model: Literal["sonnet", "opus"],
+        history: list,
+        image: "PILImage | None" = None,
+    ) -> Iterator[str]:
+        """Stream content chunks from a Claude model via OpenRouter.
+
+        Unlike ``ask()``, this method does not run the Approach B
+        tool-use loop.  It is called only when no tool schemas are
+        active, so the response is always a plain text stream.
+
+        Args:
+            query: The user's message to send.
+            model: Which Claude model to use — ``"sonnet"`` or
+              ``"opus"``.
+            history: Previous conversation turns.
+            image: Optional PIL Image included as a base64 PNG vision
+              block.
+
+        Yields:
+            Content string chunks as they arrive from the streaming API.
+        """
+        if image is not None:
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode()
+            user_content = [
+                {"type": "text", "text": query},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                },
+            ]
+        else:
+            user_content = query
+        messages = list(history) + [{"role": "user", "content": user_content}]
+        try:
+            stream = self._client.chat.completions.create(
+                messages=messages,
+                model=_MODEL_MAP[model],
+                timeout=60,
+                stream=True,
+            )
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    yield delta
+        except openai.AuthenticationError:
+            yield (
+                "(OpenRouter authentication failed — "
+                "check your OPENROUTER_API_KEY)"
+            )
+        except openai.RateLimitError:
+            yield ("(OpenRouter rate limit hit — please wait and try again)")
+        except openai.APIConnectionError:
+            yield (
+                "(OpenRouter is unreachable — "
+                "please check your internet connection)"
+            )
+        except openai.APIStatusError as exc:
+            yield (
+                f"(OpenRouter returned HTTP {exc.status_code} — "
+                "please try again)"
+            )
