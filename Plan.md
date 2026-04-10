@@ -598,6 +598,67 @@ alongside Whisper medium on a 16 GB GPU.
 | 18 | RAG Memory | T18.1 → T18.6 | complete |
 | 19 | Tools | T19.1 → T19.20 | complete |
 | 20 | Extended Tools | T20.1 → T20.7 | complete |
+| 21 | Runtime Feature Switches | T21.1 → T21.3 | not started |
+
+---
+
+## Phase 21 — Runtime Feature Switches
+
+### Overview
+
+Add CLI flags and matching UI toggles to disable TTS, STT, and tool use at
+startup.  The goal is to allow the assistant to run on minimal hardware where
+loading Whisper, Kokoro, or the full tool registry is undesirable (e.g. a
+low-RAM machine, a headless server, or a quick demo environment).
+
+Each switch is independent — any combination of the three can be disabled.
+When a component is disabled it must be gracefully absent from the UI and
+must not be imported or initialised, saving the associated memory and startup
+time.
+
+### T21.1 — Disable TTS (`--no-tts`)
+**Status:** not started
+
+Add a `--no-tts` CLI flag to `src/app.py`.  When set:
+
+- Skip instantiation of `KokoroSpeaker` and `check_kokoro_files()`.
+- Hide the audio output component (`gr.Audio`) and the voice selector
+  (`gr.Dropdown`) from the UI — they should not be rendered at all, not
+  just disabled.
+- Remove the "text and speech" option from the output mode selector; default
+  to "text" only.
+- `process_text` and `process_audio` already accept a `speaker` argument;
+  pass `None` and guard the TTS call path with `if speaker is not None`.
+- Add unit tests in `tests/test_app_startup.py` (or a new
+  `tests/test_feature_switches.py`) confirming that with `--no-tts` the
+  speaker is `None` and the voice selector is hidden.
+
+### T21.2 — Disable STT (`--no-stt`)
+**Status:** not started
+
+Add a `--no-stt` CLI flag to `src/app.py`.  When set:
+
+- Skip instantiation of `WhisperTranscriber`.
+- Hide the microphone / audio input row and the speech mode radio button
+  entirely — the UI renders in text-only mode with no way to switch to
+  speech input.
+- `process_audio` becomes unreachable; no need to guard it separately.
+- Add unit tests confirming that with `--no-stt` the transcriber is `None`
+  and the audio input is absent from the component tree.
+
+### T21.3 — Disable Tool Use (`--no-tools`)
+**Status:** not started
+
+Add a `--no-tools` CLI flag to `src/app.py`.  When set:
+
+- Do not import `src.tools` (prevents all tool modules from registering).
+- Pass an empty enabled-tools set to the orchestrator so no Approach A or
+  Approach B tools are dispatched.
+- Hide the Tools accordion from the UI entirely.
+- The orchestrator's `_make_b_executor` still exists but receives an empty
+  tool list, so the LLM never issues a tool call.
+- Add unit tests confirming that with `--no-tools` the registry contributes
+  no tools to the orchestrator and the accordion is absent.
 
 ---
 
