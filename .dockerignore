@@ -1,0 +1,34 @@
+.venv/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Local data — not needed in the image
+chroma_db/
+sessions/
+research/
+
+# Large binary model files — mounted or downloaded separately
+*.onnx
+*.bin
+*.pt
+whisper_cache/
+kokoro_cache/
+
+# Git and IDE
+.git/
+.github/
+.vscode/
+.idea/
+
+# Secrets and local config
+.env
+.env.*
+models.json
+
+# Docs / test output
+htmlcov/
+.coverage

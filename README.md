@@ -141,7 +141,88 @@ issue.
 If you dismiss the permission prompt or previously blocked the site, grant
 access via your browser's site settings for `localhost` and reload the page.
 
-## Setup
+## Docker Quick-Start
+
+The easiest way to run the assistant is with Docker Compose, which starts the
+Python app and an Ollama sidecar together.
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) with the Compose plugin
+- For GPU inference and image generation: [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/)
+
+> **CPU-only hosts:** Remove or comment out the `deploy.resources` block in
+> `compose.yml`.  Ollama will run in CPU mode — inference will be slower and
+> the image generation tool will be unavailable.
+
+### 1. Start the services
+
+```bash
+docker compose up --build
+```
+
+This builds the app image, starts the Ollama sidecar (with GPU if available),
+and waits for Ollama to pass its health check before launching the app.
+Open **http://localhost:7860** once the app container logs `Running on local URL`.
+
+### 2. Pull the Ollama models
+
+In a separate terminal, pull the two models the app uses:
+
+```bash
+docker compose exec ollama ollama pull qwen3:1.7b
+docker compose exec ollama ollama pull gemma4:e4b
+```
+
+Model weights are stored in the `ollama_models` Docker volume and persist
+across restarts.
+
+### 3. Set your OpenRouter API key (optional)
+
+Claude Sonnet/Opus responses require an OpenRouter key.  Export it before
+running `docker compose up`:
+
+```bash
+export OPENROUTER_API_KEY=your_key_here
+docker compose up
+```
+
+Or create a `.env` file in the project root:
+
+```
+OPENROUTER_API_KEY=your_key_here
+```
+
+Without the key, only Ollama tiers are available (trivial and simple queries).
+
+### 4. Custom model configuration (optional)
+
+To override the default models without rebuilding the image:
+
+```bash
+cp models.json.example models.json
+# edit models.json as needed
+```
+
+Then uncomment the `models.json` bind-mount line in `compose.yml` and restart:
+
+```bash
+docker compose up --build
+```
+
+### Notes
+
+- **TTS and STT are disabled** in the container by default (`--no-tts --no-stt`).
+  Kokoro and Whisper require large model files and system audio that are not
+  bundled in the image.  Text-only mode works out of the box.
+- **Session persistence:** saved sessions are written to `./sessions/` on the
+  host via a bind mount and survive container restarts.
+- **GPU note:** the `compose.yml` deploy block passes all NVIDIA GPUs through to
+  the Ollama container.  This is a no-op on CPU-only hosts — no changes needed.
+
+---
+
+## Local Setup
 
 ```bash
 # 1. Install Python dependencies

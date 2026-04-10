@@ -285,7 +285,7 @@ User Input (text | Whisper speech)
 | 26 | Token and Cost Display | T26.1 → T26.5 | complete |
 | 27 | Session Persistence | T27.1 → T27.4 | complete |
 | 28 | Coverage Report | T28.1 → T28.3 | complete |
-| 29 | Docker Support | T29.1 → T29.3 | not started |
+| 29 | Docker Support | T29.1 → T29.3 | complete |
 
 ---
 
@@ -576,7 +576,7 @@ GPU access.  The compose configuration must expose the necessary ports and
 pass GPU resources through to the containers that need them.
 
 ### T29.1 — Dockerfile
-**Status:** not started
+**Status:** complete
 
 Write a `Dockerfile` based on `python:3.13-slim`.  Install UV, copy
 `pyproject.toml` and `uv.lock`, run `uv sync --frozen`, copy source.
@@ -589,7 +589,7 @@ without additional port configuration as they make outbound HTTP requests.
 No inbound ports beyond 7860 are required for the app container itself.
 
 ### T29.2 — docker-compose.yml
-**Status:** not started
+**Status:** complete
 
 Write `compose.yml` with two services:
 
@@ -618,7 +618,7 @@ from the host environment.  Include `depends_on: ollama` with a health-check
 be ready before starting.  Expose port 7860.
 
 ### T29.3 — Documentation
-**Status:** not started
+**Status:** complete
 
 Update `README.md` with a Docker quick-start section covering:
 - Prerequisites: Docker, Docker Compose, and (for GPU) NVIDIA Container Toolkit

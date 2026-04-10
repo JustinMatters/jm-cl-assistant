@@ -1,0 +1,47 @@
+services:
+
+  ollama:
+    image: ollama/ollama
+    volumes:
+      # Named volume keeps model weights across container restarts.
+      - ollama_models:/root/.ollama
+    # GPU pass-through requires the NVIDIA Container Toolkit on the host
+    # (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/).
+    # Without a GPU the service starts in CPU mode — image generation will
+    # be unavailable and Ollama inference will be slower.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  app:
+    build: .
+    ports:
+      - "7860:7860"
+    environment:
+      # Connect to the Ollama sidecar instead of localhost.
+      - OLLAMA_HOST=http://ollama:11434
+      # Pass through the host API key (leave unset for Ollama-only use).
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    volumes:
+      # Persist saved sessions across container restarts.
+      - ./sessions:/app/sessions
+      # Optional: supply a custom models.json without rebuilding the image.
+      # Copy models.json.example to models.json and edit before starting.
+      # Uncomment the line below once the file exists:
+      # - ./models.json:/app/models.json:ro
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  ollama_models:
