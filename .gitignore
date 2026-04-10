@@ -90,3 +90,6 @@ chroma_db/
 
 # User model configuration (copy models.json.example to customise)
 models.json
+
+# Saved conversation sessions (local data — not committed)
+sessions/

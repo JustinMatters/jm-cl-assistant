@@ -24,6 +24,12 @@ from src.orchestrator import Orchestrator
 from src.process_audio import stream_process_audio
 from src.process_text import stream_process_text
 from src.router import OLLAMA_FAST_MODEL
+from src.sessions import (
+    delete_session,
+    list_sessions,
+    load_session,
+    save_session,
+)
 from src.speech_input import WhisperTranscriber
 from src.speech_output import KokoroSpeaker, check_kokoro_files
 from src.tools.registry import _TIER_RANK, REGISTRY
@@ -363,6 +369,198 @@ def build_app(
         )
         with gr.Accordion("Models", open=False):
             gr.Markdown(_model_lines)
+
+        # ── Sessions accordion ───────────────────────────────────────────────
+        _sessions_path = "sessions/"
+        with gr.Accordion("Sessions", open=False):
+            session_status = gr.Markdown("")
+            session_name_input = gr.Textbox(
+                placeholder="Session name (letters, digits, - _)",
+                label="Session name",
+                scale=3,
+            )
+            with gr.Row():
+                save_session_btn = gr.Button(
+                    "Save", variant="primary", size="sm"
+                )
+                refresh_sessions_btn = gr.Button(
+                    "Refresh list", variant="secondary", size="sm"
+                )
+            session_dropdown = gr.Dropdown(
+                choices=list_sessions(_sessions_path),
+                label="Saved sessions",
+                value=None,
+            )
+            with gr.Row():
+                load_session_btn = gr.Button(
+                    "Load", variant="primary", size="sm"
+                )
+                delete_session_btn = gr.Button(
+                    "Delete", variant="stop", size="sm"
+                )
+
+            _pending_overwrite = gr.State(False)
+            _pending_delete = gr.State(False)
+
+            def _handle_save(
+                name: str,
+                history: list,
+                pending_ow: bool,
+            ) -> tuple:
+                """Save current history; warn before overwriting."""
+                try:
+                    sessions = list_sessions(_sessions_path)
+                    if name.strip() in sessions and not pending_ow:
+                        return (
+                            "*Session already exists — save again"
+                            " to overwrite.*",
+                            True,
+                            gr.update(),
+                            gr.update(value="Delete"),
+                            False,
+                        )
+                    save_session(name, history, _sessions_path)
+                    return (
+                        f"*Saved session '{name.strip()}'.*",
+                        False,
+                        gr.update(
+                            choices=list_sessions(_sessions_path),
+                            value=name.strip(),
+                        ),
+                        gr.update(value="Delete"),
+                        False,
+                    )
+                except ValueError as exc:
+                    return (
+                        f"*Error: {exc}*",
+                        False,
+                        gr.update(),
+                        gr.update(value="Delete"),
+                        False,
+                    )
+
+            save_session_btn.click(
+                _handle_save,
+                inputs=[
+                    session_name_input,
+                    history_state,
+                    _pending_overwrite,
+                ],
+                outputs=[
+                    session_status,
+                    _pending_overwrite,
+                    session_dropdown,
+                    delete_session_btn,
+                    _pending_delete,
+                ],
+            )
+
+            def _handle_load(selected: str | None) -> tuple:
+                """Replace current history with the selected session."""
+                if not selected:
+                    return (
+                        gr.update(),
+                        gr.update(),
+                        "*No session selected.*",
+                        gr.update(value="Delete"),
+                        False,
+                    )
+                try:
+                    hist = load_session(selected, _sessions_path)
+                    return (
+                        hist,
+                        hist,
+                        f"*Loaded session '{selected}'.*",
+                        gr.update(value="Delete"),
+                        False,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    return (
+                        gr.update(),
+                        gr.update(),
+                        f"*Error loading session: {exc}*",
+                        gr.update(value="Delete"),
+                        False,
+                    )
+
+            load_session_btn.click(
+                _handle_load,
+                inputs=[session_dropdown],
+                outputs=[
+                    chatbot,
+                    history_state,
+                    session_status,
+                    delete_session_btn,
+                    _pending_delete,
+                ],
+            )
+
+            def _handle_delete(selected: str | None, pending: bool) -> tuple:
+                """Two-step delete: first click confirms, second executes."""
+                if not selected:
+                    return (
+                        "*No session selected.*",
+                        False,
+                        gr.update(value="Delete"),
+                        gr.update(),
+                    )
+                if not pending:
+                    return (
+                        f"*Click Delete again to confirm"
+                        f" deleting '{selected}'.*",
+                        True,
+                        gr.update(value="Confirm delete?"),
+                        gr.update(),
+                    )
+                try:
+                    delete_session(selected, _sessions_path)
+                    remaining = list_sessions(_sessions_path)
+                    return (
+                        f"*Deleted session '{selected}'.*",
+                        False,
+                        gr.update(value="Delete"),
+                        gr.update(
+                            choices=remaining,
+                            value=remaining[0] if remaining else None,
+                        ),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    return (
+                        f"*Error: {exc}*",
+                        False,
+                        gr.update(value="Delete"),
+                        gr.update(),
+                    )
+
+            delete_session_btn.click(
+                _handle_delete,
+                inputs=[session_dropdown, _pending_delete],
+                outputs=[
+                    session_status,
+                    _pending_delete,
+                    delete_session_btn,
+                    session_dropdown,
+                ],
+            )
+
+            # Cancel pending delete when the selected session changes.
+            def _cancel_pending_delete(_selected: str | None) -> tuple:
+                return gr.update(value="Delete"), False
+
+            session_dropdown.change(
+                _cancel_pending_delete,
+                inputs=[session_dropdown],
+                outputs=[delete_session_btn, _pending_delete],
+            )
+
+            def _refresh_sessions() -> gr.update:
+                return gr.update(choices=list_sessions(_sessions_path))
+
+            refresh_sessions_btn.click(
+                _refresh_sessions,
+                inputs=[],
+                outputs=[session_dropdown],
+            )
 
         # ── Tools accordion ─────────────────────────────────────────────────
         _all_tools = REGISTRY.all() if tools_enabled else []

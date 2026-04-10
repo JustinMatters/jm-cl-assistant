@@ -283,7 +283,7 @@ User Input (text | Whisper speech)
 | 24 | Context Window Trimming | T24.1 → T24.4 | complete |
 | 25 | Conversation Export | T25.1 → T25.3 | complete |
 | 26 | Token and Cost Display | T26.1 → T26.5 | complete |
-| 27 | Session Persistence | T27.1 → T27.4 | not started |
+| 27 | Session Persistence | T27.1 → T27.4 | complete |
 | 28 | Coverage Report | T28.1 → T28.3 | not started |
 | 29 | Docker Support | T29.1 → T29.3 | not started |
 
@@ -491,7 +491,7 @@ reload them, complementing the existing RAG memory (which stores semantic
 content) with full verbatim conversation replay.
 
 ### T27.1 — Session serialisation
-**Status:** not started
+**Status:** complete
 
 Add `save_session(name: str, history: list[dict], path: str = "sessions/")`,
 `load_session(name: str, path: str = "sessions/") -> list[dict]`, and
@@ -501,7 +501,7 @@ Add `save_session(name: str, history: list[dict], path: str = "sessions/")`,
 Sanitise session names to safe filenames (alphanumeric, hyphens, underscores only).
 
 ### T27.2 — Save and load UI
-**Status:** not started
+**Status:** complete
 
 Add a collapsible "Sessions" accordion to `src/app.py` containing:
 - A text input for the session name
@@ -512,7 +512,7 @@ Add a collapsible "Sessions" accordion to `src/app.py` containing:
 - A `Load` button that replaces the current history with the selected session
 
 ### T27.3 — Session deletion with confirmation
-**Status:** not started
+**Status:** complete
 
 Add a `Delete` button alongside the session dropdown.  Deletion is a
 two-step interaction: the first click changes the button label to
@@ -522,7 +522,7 @@ dropdown.  Any other action (selecting a different session, clicking Load,
 clicking Save) cancels the pending delete and resets the button label.
 
 ### T27.4 — Unit tests for session persistence
-**Status:** not started
+**Status:** complete
 
 Tests covering: save writes a valid JSON file, load restores history exactly,
 list returns saved names, delete removes the file, invalid names are rejected,
