@@ -675,78 +675,86 @@ across multiple source files: `src/router.py` (`OLLAMA_MODEL`,
 `OLLAMA_FAST_MODEL`), `src/openrouter_client.py` (`SONNET_MODEL_ID`,
 `OPUS_MODEL_ID`), `src/app.py` (`OLLAMA_MODEL_DEFAULT`,
 `WHISPER_MODEL_DEFAULT`), `src/memory/store.py` (`_EMBED_MODEL`), and
-`src/tools/image_gen.py` (`_SDXL_MODEL`).  Changing any of these requires
-editing source code.
+`src/tools/image_gen.py` (`_SDXL_MODEL`, `_MAX_IMG_DIM`).  Changing any of
+these requires editing source code.
 
 This phase moves all of them into a single JSON file (`models.json`) at the
-project root so users can swap models without touching Python.  The file is
-read at startup; the application falls back to safe built-in defaults if the
-file is absent or malformed.
+project root so users can swap models and tune key parameters without
+touching Python.  The file is read at startup; the application falls back to
+safe built-in defaults if the file is absent or malformed.
 
 As part of this phase the `--whisper-model` CLI flag is removed — the
 Whisper model size is now set in `models.json` instead.  The only
 STT-related CLI flag that remains is `--no-stt` (Phase 21).
+
+The internal router tier names (`trivial_ollama`, `simple_ollama`,
+`complex_sonnet`, `complex_opus`) are also renamed to provider-neutral names
+(`trivial_llm`, `simple_llm`, `advanced_llm`, `complex_llm`) throughout the
+codebase, including all tool `min_tier` fields, `registry.py` rank table,
+`orchestrator.py`, and `app.py`.
 
 **JSON schema (one entry per logical role):**
 ```json
 {
   "models": [
     {
-      "role": "trivial_ollama",
+      "role": "trivial_llm",
       "provider": "ollama",
       "model_id": "qwen3:1.7b",
       "display_name": "Qwen3 1.7B",
       "vision": false
     },
     {
-      "role": "simple_ollama",
+      "role": "simple_llm",
       "provider": "ollama",
       "model_id": "gemma4:e4b",
       "display_name": "Gemma 4 (4B)",
       "vision": true
     },
     {
-      "role": "complex_sonnet",
+      "role": "advanced_llm",
       "provider": "openrouter",
       "model_id": "anthropic/claude-sonnet-4-6",
       "display_name": "Claude Sonnet 4.6",
       "vision": true
     },
     {
-      "role": "complex_opus",
+      "role": "complex_llm",
       "provider": "openrouter",
       "model_id": "anthropic/claude-opus-4-6",
       "display_name": "Claude Opus 4.6",
       "vision": true
     },
     {
-      "role": "embedding",
+      "role": "vector_db_embedding",
       "provider": "ollama",
       "model_id": "nomic-embed-text",
       "display_name": "Nomic Embed Text",
       "vision": false
     },
     {
-      "role": "whisper",
+      "role": "whisper_stt_model",
       "provider": "local",
       "model_id": "medium",
       "display_name": "Whisper medium",
       "vision": false
     },
     {
-      "role": "image_gen",
+      "role": "diffusers_image_gen_model",
       "provider": "local",
       "model_id": "stabilityai/sdxl-turbo",
       "display_name": "SDXL-Turbo",
-      "vision": false
+      "vision": false,
+      "diffusers_max_image_dimension": 512
     }
   ]
 }
 ```
 
-**Fields:**
-- `role` — one of `trivial_ollama`, `simple_ollama`, `complex_sonnet`,
-  `complex_opus`, `embedding`, `whisper`, `image_gen`
+**Fields (all roles):**
+- `role` — one of `trivial_llm`, `simple_llm`, `advanced_llm`,
+  `complex_llm`, `vector_db_embedding`, `whisper_stt_model`,
+  `diffusers_image_gen_model`
 - `provider` — `"ollama"`, `"openrouter"`, or `"local"` (local Python
   library, not an API)
 - `model_id` — the identifier passed to the provider (Ollama model name,
@@ -754,6 +762,11 @@ STT-related CLI flag that remains is `--no-stt` (Phase 21).
 - `display_name` — human-readable label shown in the UI
 - `vision` — whether this model accepts image inputs (replaces the hardcoded
   `_OLLAMA_VISION_MODELS` frozenset in `orchestrator.py`)
+
+**Fields (diffusers_image_gen_model only):**
+- `diffusers_max_image_dimension` — maximum pixel size of generated images
+  (replaces `_MAX_IMG_DIM`); images are thumbnailed to this size after
+  generation or download
 
 ### T22.1 — `models.json` and loader module
 **Status:** not started
@@ -773,25 +786,42 @@ STT-related CLI flag that remains is `--no-stt` (Phase 21).
   committed; ship a tracked `models.json.example` with the same content.
 - Add unit tests in `tests/test_model_config.py` covering: valid file loads
   correctly, missing file uses defaults, invalid JSON uses defaults, missing
-  required field uses defaults, unknown role is ignored.
+  required field uses defaults, unknown role is ignored,
+  `diffusers_max_image_dimension` defaults to 512 when absent.
 
 ### T22.2 — Wire loader into application code
 **Status:** not started
 
-Replace all hardcoded model constants with values read from `load_models()`:
+Replace all hardcoded model constants with values read from `load_models()`
+and rename internal tier names throughout the codebase:
 
+**Tier rename** (touches `router.py`, `registry.py`, `orchestrator.py`,
+`app.py`, and all tool files with a `min_tier` field):
+
+| Old name | New name |
+|---|---|
+| `trivial_ollama` | `trivial_llm` |
+| `simple_ollama` | `simple_llm` |
+| `complex_sonnet` | `advanced_llm` |
+| `complex_opus` | `complex_llm` |
+
+**Constants replaced:**
 - `src/router.py` — `OLLAMA_MODEL` and `OLLAMA_FAST_MODEL` sourced from
-  `simple_ollama` and `trivial_ollama` roles respectively.
+  `simple_llm` and `trivial_llm` roles respectively.
 - `src/openrouter_client.py` — `SONNET_MODEL_ID` and `OPUS_MODEL_ID`
-  sourced from `complex_sonnet` and `complex_opus` roles.
+  sourced from `advanced_llm` and `complex_llm` roles.
 - `src/orchestrator.py` — `_OLLAMA_VISION_MODELS` frozenset replaced by
   checking `ModelConfig.vision` on the loaded configs; display name strings
   sourced from `display_name` field.
-- `src/app.py` — `OLLAMA_MODEL_DEFAULT` sourced from `simple_ollama` role;
-  `WHISPER_MODEL_DEFAULT` sourced from `whisper` role; `--whisper-model`
-  CLI flag removed entirely (Whisper size is now config-only).
-- `src/memory/store.py` — `_EMBED_MODEL` sourced from `embedding` role.
-- `src/tools/image_gen.py` — `_SDXL_MODEL` sourced from `image_gen` role.
+- `src/app.py` — `OLLAMA_MODEL_DEFAULT` sourced from `simple_llm` role;
+  `WHISPER_MODEL_DEFAULT` sourced from `whisper_stt_model` role;
+  `--whisper-model` CLI flag removed entirely (Whisper size is now
+  config-only).
+- `src/memory/store.py` — `_EMBED_MODEL` sourced from `vector_db_embedding`
+  role.
+- `src/tools/image_gen.py` — `_SDXL_MODEL` sourced from
+  `diffusers_image_gen_model` role; `_MAX_IMG_DIM` sourced from
+  `diffusers_max_image_dimension` field.
 - All existing constants become module-level variables initialised from the
   loader so the rest of each module's code is unchanged.
 
