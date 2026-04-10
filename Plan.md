@@ -308,326 +308,70 @@ User Input (text | Whisper speech)
 ---
 
 ## Phase 23 — Streaming Responses
+*Archived to completed_work.md.*
 
-### Overview
-
-Currently the orchestrator waits for the full LLM response before returning
-it to Gradio, which creates a noticeable lag for longer Claude replies.
-Gradio supports `yield`-based streaming — the generator produces response
-chunks as they arrive and Gradio updates the chat panel incrementally.
-
-### T23.1 — Stream Ollama responses
-**Status:** complete
-
-Modify `_ollama_respond` in `src/orchestrator.py` to accept a `stream=True`
-parameter and yield content chunks from the `ollama.chat` streaming API.
-Non-streaming callers (tests, tool loop) must continue to work unchanged.
-
-### T23.2 — Stream OpenRouter responses
-**Status:** complete
-
-Modify `OpenRouterClient.ask` in `src/openrouter_client.py` to accept a
-`stream=True` parameter and yield content chunks from the OpenAI-compatible
-streaming API (`stream=True` on the completions call).  Ensure the tool-use
-agentic loop (which needs the full response to detect tool calls) still
-operates in non-streaming mode.
-
-### T23.3 — Wire streaming into the Gradio UI
-**Status:** complete
-
-Update `process_text` and `process_audio` in `src/process_text.py` and
-`src/process_audio.py` to accept a `stream` flag and `yield` intermediate
-history states when streaming is active.  Update the Gradio event wiring in
-`src/app.py` to use streaming outputs (`submit_btn.click(..., streaming=True)`
-or equivalent).  TTS synthesis must only be triggered on the final complete
-response, not on partial chunks.
-
-### T23.4 — Unit tests for streaming
-**Status:** complete
-
-Add tests covering: streamed chunks are concatenated correctly, TTS is called
-only once with the full response, tool-use path bypasses streaming, and
-non-streaming callers are unaffected.
+- T23.1 — Stream Ollama responses — complete
+- T23.2 — Stream OpenRouter responses — complete
+- T23.3 — Wire streaming into the Gradio UI — complete
+- T23.4 — Unit tests for streaming — complete
 
 ---
 
 ## Phase 24 — Context Window Trimming
+*Archived to completed_work.md.*
 
-### Overview
-
-Conversation history is passed to the LLM on every turn and grows
-unboundedly.  Long sessions will eventually exceed the model's context window,
-causing silent truncation or API errors.  This phase adds a trimming strategy
-that keeps the history within a per-model token budget by summarising or
-dropping the oldest turns.
-
-### T24.1 — Per-model context window in `models.json`
-**Status:** complete
-
-Add an optional `context_tokens` integer field to `ModelConfig` in
-`src/model_config.py` (and the `models.json.example` schema).  This
-represents the usable history budget for that model in tokens — distinct from
-the model's advertised context window, which is typically much larger but
-includes the system prompt, tools schema, and current query.  Sensible
-defaults: `trivial_llm` 4000, `simple_llm` 6000, `advanced_llm` 16000,
-`complex_llm` 32000.  Update `_DEFAULTS` and the loader; add tests in
-`tests/test_model_config.py`.
-
-### T24.2 — Token counting utility
-**Status:** complete
-
-Add a `count_tokens(messages: list[dict]) -> int` helper to `src/helpers.py`
-that estimates token count from message content length (a simple
-characters-divided-by-four heuristic is sufficient; no tiktoken dependency).
-The orchestrator reads the active model's `context_tokens` from `_MODEL_CONFIG`
-to determine the budget for the current turn.
-
-### T24.3 — Trim history when budget is exceeded
-**Status:** complete
-
-In `Orchestrator.respond`, after building `augmented`, determine the budget
-from the active model's `ModelConfig.context_tokens`.  If
-`count_tokens(augmented)` exceeds the budget, drop the oldest non-system
-turns (pairs of user+assistant messages) until the budget is met.  As a last
-resort, summarise the dropped turns into a brief system note prepended to
-the remaining history.
-
-### T24.4 — UI indicator and unit tests for context trimming
-**Status:** complete
-
-When trimming occurs, append a small italic note to the assistant reply
-(e.g. `*(older context was trimmed to fit the model's window)*`) so the user
-is aware.  Add unit tests covering: history within budget is unchanged,
-oversized history is trimmed to fit, system messages are preserved, the note
-appears only when trimming occurs, and the budget is read from model config.
+- T24.1 — Per-model context window in `models.json` — complete
+- T24.2 — Token counting utility — complete
+- T24.3 — Trim history when budget is exceeded — complete
+- T24.4 — UI indicator and unit tests for context trimming — complete
 
 ---
 
 ## Phase 25 — Conversation Export
+*Archived to completed_work.md.*
 
-### Overview
-
-Users may want to save a chat session as a readable file.  This phase adds a
-download button that serialises the current Gradio history state to a
-Markdown file and offers it for download.
-
-### T25.1 — Export formatter
-**Status:** complete
-
-Add `format_history_as_markdown(history: list[dict]) -> str` to
-`src/helpers.py`.  Each turn becomes a `**User:**` / `**Assistant:**` block
-separated by horizontal rules.  Include a timestamp header at the top.
-
-### T25.2 — Download button in the Gradio UI
-**Status:** complete
-
-Add a `gr.DownloadButton` (or `gr.File`) to `src/app.py` that, when clicked,
-calls the formatter and serves the result as `conversation.md`.  Wire it to
-the `history_state` so it always reflects the current session.
-
-### T25.3 — Unit tests for export
-**Status:** complete
-
-Tests covering: empty history produces a valid header-only file, user and
-assistant turns are formatted correctly, special Markdown characters in
-content are preserved (not double-escaped).
+- T25.1 — Export formatter — complete
+- T25.2 — Download button in the Gradio UI — complete
+- T25.3 — Unit tests for export — complete
 
 ---
 
 ## Phase 26 — Token and Cost Display
+*Archived to completed_work.md.*
 
-### Overview
-
-OpenRouter returns token usage metadata on every response.  Surfacing per-call
-token counts and an approximate cost in the UI helps users understand spend,
-especially for Opus which is significantly more expensive than Sonnet.
-
-### T26.1 — Capture usage metadata from OpenRouter
-**Status:** complete
-
-Update `OpenRouterClient.ask` in `src/openrouter_client.py` to extract
-`usage.prompt_tokens`, `usage.completion_tokens`, and `usage.total_tokens`
-from the API response and return them alongside the text response (e.g. as
-a `(text, usage_dict)` tuple or by storing on the client instance).
-
-### T26.2 — Cost calculation
-**Status:** complete
-
-Add a `PRICING` dict to `src/openrouter_client.py` keyed by model ID with
-per-million-token input and output costs (sourced from the OpenRouter pricing
-page).  Add `calculate_cost(model_id, prompt_tokens, completion_tokens) -> float`.
-
-### T26.3 — Per-response cost in the UI
-**Status:** complete
-
-After each Claude response, display token counts and estimated cost as a small
-grey annotation below the assistant message (e.g. `*(523 tokens · ~$0.002)*`).
-Ollama responses show token counts only (no cost).  Implement via a separate
-`gr.Markdown` component updated after each turn.
-
-### T26.4 — Session total cost tracker
-**Status:** complete
-
-Accumulate per-response costs in a session total displayed in the sidebar
-(e.g. `Session cost: ~$0.014`).  Reset to zero when the conversation is
-cleared.
-
-### T26.5 — Unit tests for cost tracking
-**Status:** complete
-
-Tests covering: cost calculation is correct for known token counts, Ollama
-path produces zero cost, session total accumulates correctly, display
-formatting rounds to a sensible number of decimal places.
+- T26.1 — Capture usage metadata from OpenRouter — complete
+- T26.2 — Cost calculation — complete
+- T26.3 — Per-response cost in the UI — complete
+- T26.4 — Session total cost tracker — complete
+- T26.5 — Unit tests for cost tracking — complete
 
 ---
 
 ## Phase 27 — Session Persistence
+*Archived to completed_work.md.*
 
-### Overview
-
-Gradio's `history_state` is lost when the page is refreshed or the server
-restarts.  This phase adds the ability to save named sessions to disk and
-reload them, complementing the existing RAG memory (which stores semantic
-content) with full verbatim conversation replay.
-
-### T27.1 — Session serialisation
-**Status:** complete
-
-Add `save_session(name: str, history: list[dict], path: str = "sessions/")`,
-`load_session(name: str, path: str = "sessions/") -> list[dict]`, and
-`delete_session(name: str, path: str = "sessions/")` to a new
-`src/sessions.py` module.  Sessions are stored as JSON files in `sessions/`
-(gitignored).  Include a `list_sessions()` helper returning saved session names.
-Sanitise session names to safe filenames (alphanumeric, hyphens, underscores only).
-
-### T27.2 — Save and load UI
-**Status:** complete
-
-Add a collapsible "Sessions" accordion to `src/app.py` containing:
-- A text input for the session name
-- A `Save` button that writes the current history to disk; if the name already
-  exists show a warning Markdown element (`*Session already exists — save again
-  to overwrite*`) and only overwrite on a second click
-- A `gr.Dropdown` listing saved sessions, refreshed on open
-- A `Load` button that replaces the current history with the selected session
-
-### T27.3 — Session deletion with confirmation
-**Status:** complete
-
-Add a `Delete` button alongside the session dropdown.  Deletion is a
-two-step interaction: the first click changes the button label to
-`Confirm delete?` and sets a pending-delete flag in `gr.State`; a second
-click within the same UI interaction executes the deletion and refreshes the
-dropdown.  Any other action (selecting a different session, clicking Load,
-clicking Save) cancels the pending delete and resets the button label.
-
-### T27.4 — Unit tests for session persistence
-**Status:** complete
-
-Tests covering: save writes a valid JSON file, load restores history exactly,
-list returns saved names, delete removes the file, invalid names are rejected,
-overwrite guard triggers on first save and clears on second.
+- T27.1 — Session serialisation — complete
+- T27.2 — Save and load UI — complete
+- T27.3 — Session deletion with confirmation — complete
+- T27.4 — Unit tests for session persistence — complete
 
 ---
 
 ## Phase 28 — Coverage Report
+*Archived to completed_work.md.*
 
-### Overview
-
-The test suite has grown organically to 732 tests but coverage has not been
-measured.  This phase installs `pytest-cov`, generates a baseline report, and
-adds targeted tests to fill the most significant gaps.
-
-### T28.1 — Add pytest-cov and baseline report
-**Status:** complete
-
-`uv add --dev pytest-cov`.  Run `uv run pytest --cov=src --cov-report=term-missing -m "not integration" -q`
-and record the baseline line coverage percentage.  Identify the top five
-uncovered modules or functions by uncovered-line count.
-
-### T28.2 — Fill coverage gaps
-**Status:** complete
-
-Write targeted tests for the identified gaps.  Focus on branches and error
-paths that are hard to hit in normal use (e.g. malformed tool arguments,
-Ollama connection failures in specific code paths, edge cases in helpers).
-Aim for ≥ 85% overall line coverage.
-
-### T28.3 — Add coverage to CI
-**Status:** complete
-
-Update `.github/workflows/ci.yml` to run pytest with `--cov=src
---cov-fail-under=85` so coverage regressions fail the build.
+- T28.1 — Add pytest-cov and baseline report — complete
+- T28.2 — Fill coverage gaps — complete
+- T28.3 — Add coverage to CI — complete
 
 ---
 
 ## Phase 29 — Docker Support
+*Archived to completed_work.md.*
 
-### Overview
-
-Running the assistant currently requires manually installing Ollama, Python,
-UV, and all dependencies.  A `Dockerfile` and `compose.yml` package the
-Python application so it can be started with a single `docker compose up`,
-with Ollama running as a sidecar service.
-
-Several runtime tools make outbound network requests (web search, weather,
-currency, Wikipedia, URL reader) and some tools (image generation) require
-GPU access.  The compose configuration must expose the necessary ports and
-pass GPU resources through to the containers that need them.
-
-### T29.1 — Dockerfile
-**Status:** complete
-
-Write a `Dockerfile` based on `python:3.13-slim`.  Install UV, copy
-`pyproject.toml` and `uv.lock`, run `uv sync --frozen`, copy source.
-Expose port 7860 (Gradio default).  Set `CMD` to `uv run python assistant.py
---no-tts --no-stt` as a sensible headless default (TTS/STT require system
-audio which is unavailable in most container environments).
-
-Network-dependent tools (web search, weather, currency, URL reader) work
-without additional port configuration as they make outbound HTTP requests.
-No inbound ports beyond 7860 are required for the app container itself.
-
-### T29.2 — docker-compose.yml
-**Status:** complete
-
-Write `compose.yml` with two services:
-
-**`ollama`** — uses the official `ollama/ollama` image.  Mount a named volume
-for model weights so they persist across restarts.  For GPU inference, add an
-NVIDIA runtime deploy block:
-```yaml
-deploy:
-  resources:
-    reservations:
-      devices:
-        - driver: nvidia
-          count: all
-          capabilities: [gpu]
-```
-This requires the host to have the NVIDIA Container Toolkit installed
-(`nvidia-ctk`).  Without a GPU the service still starts but Ollama runs in
-CPU mode and image generation will be unavailable.
-
-**`app`** — builds the Dockerfile above.  Set `OLLAMA_HOST=http://ollama:11434`
-so it connects to the sidecar.  Mount a `./sessions` volume for session
-persistence and a `./models.json` bind mount so users can supply a custom
-config without rebuilding the image.  Pass through any `OPENROUTER_API_KEY`
-from the host environment.  Include `depends_on: ollama` with a health-check
-(`curl -f http://ollama:11434/` with retries) so the app waits for Ollama to
-be ready before starting.  Expose port 7860.
-
-### T29.3 — Documentation
-**Status:** complete
-
-Update `README.md` with a Docker quick-start section covering:
-- Prerequisites: Docker, Docker Compose, and (for GPU) NVIDIA Container Toolkit
-- `docker compose up` to start both services
-- `docker compose exec ollama ollama pull gemma4:e4b` to pull the default model
-- How to supply a custom `models.json`
-- GPU pass-through note: image generation and fast Ollama inference require
-  the NVIDIA runtime; the compose file includes the deploy block but it is a
-  no-op on CPU-only hosts
+- T29.1 — Dockerfile — complete
+- T29.2 — docker-compose.yml — complete
+- T29.3 — Documentation — complete
 
 ---
 
