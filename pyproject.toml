@@ -8,6 +8,7 @@ dependencies = [
     "chromadb>=1.5.5",
     "ddgs>=9.12.1",
     "gradio~=6.10",
+    "graphviz>=0.21",
     "kokoro-onnx~=0.5",
     "numpy>=2.4.3",
     "ollama~=0.6",

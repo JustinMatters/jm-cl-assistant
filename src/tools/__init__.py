@@ -15,6 +15,7 @@ from src.tools import currency as _currency  # noqa: F401
 from src.tools import datetime_tool as _datetime_tool  # noqa: F401
 from src.tools import dictionary as _dictionary  # noqa: F401
 from src.tools import file_reader as _file_reader  # noqa: F401
+from src.tools import flowchart as _flowchart  # noqa: F401
 from src.tools import location as _location  # noqa: F401
 from src.tools import reminders as _reminders  # noqa: F401
 from src.tools import sysinfo as _sysinfo  # noqa: F401
