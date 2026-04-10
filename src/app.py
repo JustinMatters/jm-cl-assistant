@@ -305,13 +305,42 @@ def build_app(
             tmp.close()
             return tmp.name
 
-        gr.DownloadButton(
-            label="Export conversation",
-            value=_export_conversation,
-            inputs=[history_state],
-            variant="secondary",
-            size="sm",
-        )
+        with gr.Row():
+            gr.DownloadButton(
+                label="Export conversation",
+                value=_export_conversation,
+                inputs=[history_state],
+                variant="secondary",
+                size="sm",
+            )
+            clear_btn = gr.Button("Clear", variant="secondary", size="sm")
+
+        usage_md = gr.Markdown("", visible=False)
+        session_cost_md = gr.Markdown("", visible=False)
+
+        def _usage_annotation() -> gr.update:
+            """Return a gr.update for the per-response usage annotation."""
+            usage = orchestrator.last_usage
+            if not usage:
+                return gr.update(visible=False, value="")
+            total = usage.get("total_tokens", 0)
+            parts = [f"{total:,} tokens"]
+            if orchestrator.last_cost > 0:
+                parts.append(f"~${orchestrator.last_cost:.4f}")
+            return gr.update(
+                visible=True,
+                value=f"*({' · '.join(parts)})*",
+            )
+
+        def _session_cost_update() -> gr.update:
+            """Return a gr.update for the session total cost display."""
+            cost = orchestrator.session_cost
+            if cost <= 0:
+                return gr.update(visible=False, value="")
+            return gr.update(
+                visible=True,
+                value=f"Session cost: ~${cost:.4f}",
+            )
 
         def _memory_status(enabled: bool) -> str:
             if not enabled or orchestrator._memory is None:
@@ -585,6 +614,8 @@ def build_app(
                     _memory_status(mem_enabled),
                     gr.update(visible=False, value=None),
                     gr.update(),
+                    gr.update(),
+                    gr.update(),
                 ) + _hide_modal()
                 return
             for (
@@ -614,6 +645,8 @@ def build_app(
                         gr.update(),
                         gr.update(),
                         gr.update(),
+                        gr.update(),
+                        gr.update(),
                     ) + _hide_modal()
                 else:
                     # Final chunk — update all outputs.
@@ -625,6 +658,8 @@ def build_app(
                         _memory_status(mem_enabled),
                         _image_update(),
                         gr.update(value=None),
+                        _usage_annotation(),
+                        _session_cost_update(),
                     ) + _show_modal()
 
         _text_inputs = [
@@ -645,6 +680,8 @@ def build_app(
             memory_status,
             image_output,
             image_input,
+            usage_md,
+            session_cost_md,
         ] + _MODAL_OUTPUTS
 
         submit_btn.click(
@@ -701,6 +738,8 @@ def build_app(
                     gr.update(),
                     gr.update(),
                     gr.update(),
+                    gr.update(),
+                    gr.update(),
                 ) + _hide_modal()
                 return
             try:
@@ -730,6 +769,8 @@ def build_app(
                             gr.update(),
                             gr.update(),
                             gr.update(),
+                            gr.update(),
+                            gr.update(),
                         ) + _hide_modal()
                     else:
                         # Final — update all outputs and reset recorder.
@@ -741,6 +782,8 @@ def build_app(
                             _memory_status(mem_enabled),
                             _image_update(),
                             gr.update(value=None),
+                            _usage_annotation(),
+                            _session_cost_update(),
                         ) + _show_modal()
             except Exception as exc:  # noqa: BLE001
                 err_display = list(history) + [
@@ -753,6 +796,8 @@ def build_app(
                     gr.update(value=None),
                     _memory_status(mem_enabled),
                     gr.update(visible=False, value=None),
+                    gr.update(),
+                    gr.update(),
                     gr.update(),
                 ) + _hide_modal()
 
@@ -776,8 +821,33 @@ def build_app(
                 memory_status,
                 image_output,
                 image_input,
+                usage_md,
+                session_cost_md,
             ]
             + _MODAL_OUTPUTS,
+        )
+
+        def handle_clear():
+            """Clear the conversation and reset session cost."""
+            orchestrator.reset_session_cost()
+            return (
+                [],
+                [],
+                "",
+                gr.update(visible=False, value=""),
+                gr.update(visible=False, value=""),
+            )
+
+        clear_btn.click(
+            handle_clear,
+            inputs=[],
+            outputs=[
+                chatbot,
+                history_state,
+                text_input,
+                usage_md,
+                session_cost_md,
+            ],
         )
 
         # ── Modal button handlers ───────────────────────────────────────────

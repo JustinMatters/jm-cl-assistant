@@ -19,6 +19,7 @@ from src.openrouter_client import (
     OPUS_DISPLAY_NAME,
     SONNET_DISPLAY_NAME,
     OpenRouterClient,
+    calculate_cost,
 )
 from src.router import OLLAMA_FAST_MODEL, OLLAMA_MODEL, OllamaRouter
 from src.tools.image_utils import decode_image, is_image_sentinel
@@ -101,6 +102,9 @@ class Orchestrator:
                 )
         self._pending_execution: dict | None = None
         self._pending_image = None
+        self.last_usage: dict | None = None
+        self.last_cost: float = 0.0
+        self.session_cost: float = 0.0
         self._backend_labels = {
             "trivial_llm": f"Ollama: {fast_model.split('/')[-1]}",
             "simple_llm": f"Ollama: {ollama_model.split('/')[-1]}",
@@ -138,6 +142,8 @@ class Orchestrator:
             ``updated_history`` includes the new user and assistant turns.
         """
         self._pending_image = None
+        self.last_usage = None
+        self.last_cost = 0.0
         # Retrieve relevant past memories and inject as a system message.
         # augmented is a local copy — it is never written back to history,
         # so the injected context does not accumulate across turns.
@@ -246,6 +252,16 @@ class Orchestrator:
                     tool_executor=b_executor,
                     image=image,
                 )
+            # Accumulate cost for Claude calls.
+            if effective in ("advanced_llm", "complex_llm"):
+                if self._claude.last_usage:
+                    self.last_usage = self._claude.last_usage
+                    self.last_cost = calculate_cost(
+                        self.last_usage["model_id"],
+                        self.last_usage["prompt_tokens"],
+                        self.last_usage["completion_tokens"],
+                    )
+                    self.session_cost += self.last_cost
             if was_trimmed:
                 response += (
                     "\n\n*(older context was trimmed"
@@ -353,6 +369,12 @@ class Orchestrator:
         self._pending_execution = None
         return "Code execution cancelled."
 
+    def reset_session_cost(self) -> None:
+        """Reset the session cost accumulator and last usage record."""
+        self.session_cost = 0.0
+        self.last_cost = 0.0
+        self.last_usage = None
+
     def _ollama_respond(
         self,
         query: str,
@@ -407,6 +429,17 @@ class Orchestrator:
             tool_calls = msg.get("tool_calls")
 
             if not tool_calls or not tools or not tool_executor:
+                try:
+                    p = int(result.get("prompt_eval_count") or 0)
+                    c = int(result.get("eval_count") or 0)
+                    self.last_usage = {
+                        "prompt_tokens": p,
+                        "completion_tokens": c,
+                        "total_tokens": p + c,
+                        "model_id": model,
+                    }
+                except (TypeError, AttributeError):
+                    self.last_usage = None
                 return msg.get("content") or ""
 
             # Append assistant message and execute each tool call.
@@ -473,6 +506,18 @@ class Orchestrator:
                 content = chunk["message"]["content"]
                 if content:
                     yield content
+                if chunk.get("done"):
+                    try:
+                        p = int(chunk.get("prompt_eval_count") or 0)
+                        c = int(chunk.get("eval_count") or 0)
+                        self.last_usage = {
+                            "prompt_tokens": p,
+                            "completion_tokens": c,
+                            "total_tokens": p + c,
+                            "model_id": model,
+                        }
+                    except (TypeError, AttributeError):
+                        self.last_usage = None
         except Exception as exc:
             yield (f"(Ollama error: {exc} — please check it is running)")
 
@@ -506,6 +551,8 @@ class Orchestrator:
             chunks and the updated history list for the final yield.
         """
         self._pending_image = None
+        self.last_usage = None
+        self.last_cost = 0.0
         context_block = ""
         if self._memory is not None and memory_enabled and query.strip():
             try:
@@ -619,6 +666,16 @@ class Orchestrator:
                     tool_executor=b_executor,
                     image=image,
                 )
+            # Accumulate cost for Claude calls.
+            if effective in ("advanced_llm", "complex_llm"):
+                if self._claude.last_usage:
+                    self.last_usage = self._claude.last_usage
+                    self.last_cost = calculate_cost(
+                        self.last_usage["model_id"],
+                        self.last_usage["prompt_tokens"],
+                        self.last_usage["completion_tokens"],
+                    )
+                    self.session_cost += self.last_cost
             if was_trimmed:
                 response += (
                     "\n\n*(older context was trimmed"
@@ -664,6 +721,16 @@ class Orchestrator:
             yield accumulated, None
 
         response = accumulated
+        # Accumulate cost for Claude streaming calls.
+        if effective in ("advanced_llm", "complex_llm"):
+            if self._claude.last_usage:
+                self.last_usage = self._claude.last_usage
+                self.last_cost = calculate_cost(
+                    self.last_usage["model_id"],
+                    self.last_usage["prompt_tokens"],
+                    self.last_usage["completion_tokens"],
+                )
+                self.session_cost += self.last_cost
         if was_trimmed:
             response += (
                 "\n\n*(older context was trimmed to fit the model's window)*"

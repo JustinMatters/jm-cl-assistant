@@ -282,7 +282,7 @@ User Input (text | Whisper speech)
 | 23 | Streaming Responses | T23.1 → T23.4 | complete |
 | 24 | Context Window Trimming | T24.1 → T24.4 | complete |
 | 25 | Conversation Export | T25.1 → T25.3 | complete |
-| 26 | Token and Cost Display | T26.1 → T26.5 | not started |
+| 26 | Token and Cost Display | T26.1 → T26.5 | complete |
 | 27 | Session Persistence | T27.1 → T27.4 | not started |
 | 28 | Coverage Report | T28.1 → T28.3 | not started |
 | 29 | Docker Support | T29.1 → T29.3 | not started |
@@ -443,7 +443,7 @@ token counts and an approximate cost in the UI helps users understand spend,
 especially for Opus which is significantly more expensive than Sonnet.
 
 ### T26.1 — Capture usage metadata from OpenRouter
-**Status:** not started
+**Status:** complete
 
 Update `OpenRouterClient.ask` in `src/openrouter_client.py` to extract
 `usage.prompt_tokens`, `usage.completion_tokens`, and `usage.total_tokens`
@@ -451,14 +451,14 @@ from the API response and return them alongside the text response (e.g. as
 a `(text, usage_dict)` tuple or by storing on the client instance).
 
 ### T26.2 — Cost calculation
-**Status:** not started
+**Status:** complete
 
 Add a `PRICING` dict to `src/openrouter_client.py` keyed by model ID with
 per-million-token input and output costs (sourced from the OpenRouter pricing
 page).  Add `calculate_cost(model_id, prompt_tokens, completion_tokens) -> float`.
 
 ### T26.3 — Per-response cost in the UI
-**Status:** not started
+**Status:** complete
 
 After each Claude response, display token counts and estimated cost as a small
 grey annotation below the assistant message (e.g. `*(523 tokens · ~$0.002)*`).
@@ -466,14 +466,14 @@ Ollama responses show token counts only (no cost).  Implement via a separate
 `gr.Markdown` component updated after each turn.
 
 ### T26.4 — Session total cost tracker
-**Status:** not started
+**Status:** complete
 
 Accumulate per-response costs in a session total displayed in the sidebar
 (e.g. `Session cost: ~$0.014`).  Reset to zero when the conversation is
 cleared.
 
 ### T26.5 — Unit tests for cost tracking
-**Status:** not started
+**Status:** complete
 
 Tests covering: cost calculation is correct for known token counts, Ollama
 path produces zero cost, session total accumulates correctly, display
