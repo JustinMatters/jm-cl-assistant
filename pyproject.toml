@@ -4,9 +4,11 @@ version = "0.1.0"
 description = "Hybrid AI chatbot routing queries between a local Ollama model and Claude via the Anthropic API"
 requires-python = ">=3.13"
 dependencies = [
+    "accelerate>=1.13.0",
     "asteval>=1.0.8",
     "chromadb>=1.5.5",
     "ddgs>=9.12.1",
+    "diffusers>=0.37.1",
     "fastexcel>=0.19.0",
     "gradio~=6.10",
     "graphviz>=0.21",
@@ -25,6 +27,7 @@ dependencies = [
     "sounddevice>=0.5.5",
     "torch>=2.11.0",
     "trafilatura>=1.4.0",
+    "transformers>=5.5.3",
 ]
 
 [tool.ruff]

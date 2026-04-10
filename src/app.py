@@ -322,6 +322,12 @@ def build_app(
                         label=_lbl,
                         interactive=_ok,
                     )
+                    if _tool.name == "image_gen":
+                        gr.Markdown(
+                            "_Note: enabling Image generation downloads "
+                            "~6.7 GB of SDXL-Turbo weights on first use "
+                            "and requires a CUDA GPU with ≥7 GB VRAM._"
+                        )
 
         def _make_tool_toggle(name: str):
             """Return a Gradio change callback for the named tool's checkbox.

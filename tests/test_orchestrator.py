@@ -57,6 +57,7 @@ class TestOrchestratorRespond:
             mocker.ANY,
             tools=mocker.ANY,
             tool_executor=mocker.ANY,
+            image=None,
         )
         assert response == "A detailed answer."
 
@@ -73,6 +74,7 @@ class TestOrchestratorRespond:
             mocker.ANY,
             tools=mocker.ANY,
             tool_executor=mocker.ANY,
+            image=None,
         )
         assert response == "A highly detailed answer."
 

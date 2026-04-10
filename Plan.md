@@ -489,7 +489,7 @@ generates a chart.
 ---
 
 ### T20.7 — Image Generation Tool
-**Status:** not started
+**Status:** complete
 
 Implement `src/tools/image_gen.py` — generates an image from a text
 prompt, first attempting local diffusion and falling back to a CC0 image
@@ -597,7 +597,7 @@ alongside Whisper medium on a 16 GB GPU.
 | 17 | Minor Code Quality | T17.1 → T17.2 | complete |
 | 18 | RAG Memory | T18.1 → T18.6 | complete |
 | 19 | Tools | T19.1 → T19.20 | complete |
-| 20 | Extended Tools | T20.1 → T20.7 | not started |
+| 20 | Extended Tools | T20.1 → T20.7 | complete |
 
 ---
 
