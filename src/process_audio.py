@@ -40,6 +40,7 @@ def process_audio(
     speaker,
     memory_enabled: bool = True,
     enabled_tools: set | None = None,
+    image=None,
 ) -> tuple[list, list, bytes | None]:
     """Validate, transcribe, and respond to audio input.
 
@@ -122,6 +123,7 @@ def process_audio(
             history,
             memory_enabled=memory_enabled,
             enabled_tools=enabled_tools,
+            image=image,
         )
     except ConnectionError:
         return (

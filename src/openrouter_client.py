@@ -5,11 +5,16 @@ Anthropic's Claude models.  Requires the OPENROUTER_API_KEY environment
 variable to be set.
 """
 
+import base64
+import io
 import os
 from collections.abc import Callable
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import openai
+
+if TYPE_CHECKING:
+    from PIL.Image import Image as PILImage
 
 SONNET_MODEL_ID = "anthropic/claude-sonnet-4-6"
 OPUS_MODEL_ID = "anthropic/claude-opus-4-6"
@@ -51,6 +56,7 @@ class OpenRouterClient:
         tools: list[dict] | None = None,
         tool_executor: Callable[[str, str], str] | None = None,
         max_tool_iterations: int = 5,
+        image: "PILImage | None" = None,
     ) -> str:
         """Send a query to a Claude model and return the response text.
 
@@ -77,11 +83,27 @@ class OpenRouterClient:
               ``tools`` is non-empty; ignored otherwise.
             max_tool_iterations: Maximum number of tool-call rounds
               before the loop is terminated with a guard message.
+            image: Optional PIL Image to include as a vision content
+              block alongside the text query.  Encoded as a base64 PNG
+              data URL.  Only sent on the first user turn.
 
         Returns:
             The assistant's final reply as a plain string.
         """
-        messages = list(history) + [{"role": "user", "content": query}]
+        if image is not None:
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode()
+            user_content = [
+                {"type": "text", "text": query},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                },
+            ]
+        else:
+            user_content = query
+        messages = list(history) + [{"role": "user", "content": user_content}]
         create_kwargs: dict = {
             "model": _MODEL_MAP[model],
             "timeout": 60,

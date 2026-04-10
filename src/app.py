@@ -251,6 +251,12 @@ def build_app(
             visible=False,
         )
 
+        image_input = gr.Image(
+            sources=["upload", "clipboard"],
+            type="pil",
+            label="Attach image (optional)",
+        )
+
         history_state = gr.State([])
 
         def _memory_status(enabled: bool) -> str:
@@ -450,7 +456,7 @@ def build_app(
         # ── Text input flow ─────────────────────────────────────────────────
 
         def handle_text(
-            query, history, out_mode, show, voice, mem_enabled, tools
+            query, history, out_mode, show, voice, mem_enabled, tools, img
         ):
             """Handle a text query submitted via the text input or send button.
 
@@ -476,6 +482,7 @@ def build_app(
                     None,
                     _memory_status(mem_enabled),
                     gr.update(visible=False, value=None),
+                    gr.update(),
                 ) + _hide_modal()
             display_history, updated_history, audio_out = process_text(
                 query,
@@ -488,6 +495,7 @@ def build_app(
                 lambda: orchestrator.last_backend,
                 memory_enabled=mem_enabled,
                 enabled_tools=tools,
+                image=img,
             )
             return (
                 display_history,
@@ -496,6 +504,7 @@ def build_app(
                 audio_out,
                 _memory_status(mem_enabled),
                 _image_update(),
+                gr.update(value=None),  # clear image input after send
             ) + _show_modal()
 
         _text_inputs = [
@@ -506,6 +515,7 @@ def build_app(
             voice_selector,
             memory_checkbox,
             tools_state,
+            image_input,
         ]
         _text_outputs = [
             chatbot,
@@ -514,6 +524,7 @@ def build_app(
             audio_output,
             memory_status,
             image_output,
+            image_input,
         ] + _MODAL_OUTPUTS
 
         submit_btn.click(
@@ -536,7 +547,7 @@ def build_app(
         # is not interrupted.
 
         def handle_audio(
-            audio_data, history, out_mode, show, voice, mem_enabled, tools
+            audio_data, history, out_mode, show, voice, mem_enabled, tools, img
         ):
             """Handle a microphone recording submitted via the audio input.
 
@@ -569,6 +580,7 @@ def build_app(
                     gr.update(),
                     gr.update(),
                     gr.update(),
+                    gr.update(),
                 ) + _hide_modal()
             try:
                 display_history, updated_history, audio_out = process_audio(
@@ -582,6 +594,7 @@ def build_app(
                     speaker,
                     memory_enabled=mem_enabled,
                     enabled_tools=tools,
+                    image=img,
                 )
                 return (
                     display_history,
@@ -590,6 +603,7 @@ def build_app(
                     gr.update(value=None),  # reset recorder
                     _memory_status(mem_enabled),
                     _image_update(),
+                    gr.update(value=None),  # clear image input
                 ) + _show_modal()
             except Exception as exc:  # noqa: BLE001
                 err_display = list(history) + [
@@ -605,6 +619,7 @@ def build_app(
                     gr.update(value=None),  # reset recorder
                     _memory_status(mem_enabled),
                     gr.update(visible=False, value=None),
+                    gr.update(),
                 ) + _hide_modal()
 
         audio_input.change(
@@ -617,6 +632,7 @@ def build_app(
                 voice_selector,
                 memory_checkbox,
                 tools_state,
+                image_input,
             ],
             outputs=[
                 chatbot,
@@ -625,6 +641,7 @@ def build_app(
                 audio_input,
                 memory_status,
                 image_output,
+                image_input,
             ]
             + _MODAL_OUTPUTS,
         )

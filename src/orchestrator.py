@@ -21,6 +21,25 @@ from src.router import OLLAMA_FAST_MODEL, OLLAMA_MODEL, OllamaRouter
 from src.tools.image_utils import decode_image, is_image_sentinel
 from src.tools.registry import REGISTRY
 
+# Model name prefixes (lowercase) that support vision/image input natively.
+# Used to decide whether an Ollama-routed query with an image attachment
+# should stay local or be escalated to Claude.
+_OLLAMA_VISION_MODELS: frozenset[str] = frozenset(
+    {
+        "gemma4",  # Google Gemma 4 — natively multimodal (adopted in T20.1)
+        "llava",  # LLaVA series
+        "moondream",  # Moondream
+        "bakllava",  # BakLLaVA
+        "minicpm-v",  # MiniCPM-V
+    }
+)
+
+
+def _model_supports_vision(model_name: str) -> bool:
+    """Return True if model_name matches a known vision-capable model prefix."""
+    base = model_name.lower().split("/")[-1]
+    return any(base.startswith(p) for p in _OLLAMA_VISION_MODELS)
+
 
 class Orchestrator:
     """Routes user queries to the appropriate LLM backend.
@@ -85,6 +104,7 @@ class Orchestrator:
         history: list,
         memory_enabled: bool = True,
         enabled_tools: set[str] | None = None,
+        image=None,
     ) -> tuple[str, list]:
         """Generate a response and update the conversation history.
 
@@ -159,6 +179,19 @@ class Orchestrator:
                 if classification in self._backend_labels
                 else "trivial_ollama"
             )
+            # When an image is attached and the selected Ollama model does
+            # not support vision, escalate to Claude Sonnet which does.
+            if image is not None and effective in (
+                "trivial_ollama",
+                "simple_ollama",
+            ):
+                ollama_model = (
+                    self._fast_model
+                    if effective == "trivial_ollama"
+                    else self._ollama_model
+                )
+                if not _model_supports_vision(ollama_model):
+                    effective = "complex_sonnet"
             self.last_backend = self._backend_labels[effective]
             b_schemas = REGISTRY.schemas(active_names)
             b_executor = (
@@ -171,6 +204,7 @@ class Orchestrator:
                     self._fast_model,
                     tools=b_schemas,
                     tool_executor=b_executor,
+                    image=image,
                 )
             elif effective == "simple_ollama":
                 response = self._ollama_respond(
@@ -179,6 +213,7 @@ class Orchestrator:
                     self._ollama_model,
                     tools=b_schemas,
                     tool_executor=b_executor,
+                    image=image,
                 )
             elif effective == "complex_sonnet":
                 response = self._claude.ask(
@@ -187,6 +222,7 @@ class Orchestrator:
                     augmented,
                     tools=b_schemas or None,
                     tool_executor=b_executor,
+                    image=image,
                 )
             else:
                 response = self._claude.ask(
@@ -195,6 +231,7 @@ class Orchestrator:
                     augmented,
                     tools=b_schemas or None,
                     tool_executor=b_executor,
+                    image=image,
                 )
         updated_history = list(history) + [
             {"role": "user", "content": query},
@@ -306,6 +343,7 @@ class Orchestrator:
         tools: list[dict] | None = None,
         tool_executor=None,
         max_tool_iterations: int = 5,
+        image=None,
     ) -> str:
         """Send a query to a local Ollama model and return the response.
 
@@ -328,7 +366,15 @@ class Orchestrator:
         Returns:
             The model's response text.
         """
-        messages = list(history) + [{"role": "user", "content": query}]
+        user_msg: dict = {"role": "user", "content": query}
+        if image is not None:
+            import base64
+            import io
+
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            user_msg["images"] = [base64.b64encode(buf.getvalue()).decode()]
+        messages = list(history) + [user_msg]
         tool_rounds = 0
         while True:
             try:
