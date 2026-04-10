@@ -599,6 +599,7 @@ alongside Whisper medium on a 16 GB GPU.
 | 19 | Tools | T19.1 → T19.20 | complete |
 | 20 | Extended Tools | T20.1 → T20.7 | complete |
 | 21 | Runtime Feature Switches | T21.1 → T21.3 | not started |
+| 22 | Model Configuration File | T22.1 → T22.3 | not started |
 
 ---
 
@@ -659,6 +660,113 @@ Add a `--no-tools` CLI flag to `src/app.py`.  When set:
   tool list, so the LLM never issues a tool call.
 - Add unit tests confirming that with `--no-tools` the registry contributes
   no tools to the orchestrator and the accordion is absent.
+
+---
+
+## Phase 22 — Model Configuration File
+
+### Overview
+
+Model identities are currently hardcoded in four places: `src/router.py`
+(`OLLAMA_MODEL`, `OLLAMA_FAST_MODEL`), `src/openrouter_client.py`
+(`SONNET_MODEL_ID`, `OPUS_MODEL_ID`), and `src/app.py`
+(`OLLAMA_MODEL_DEFAULT`).  Changing any model requires editing source code.
+
+This phase moves all model definitions into a single JSON file
+(`models.json`) at the project root so users can swap, add, or remove models
+without touching Python.  The file is read at startup; the application falls
+back to safe built-in defaults if the file is absent or malformed.
+
+**JSON schema (one entry per logical role):**
+```json
+{
+  "models": [
+    {
+      "role": "trivial_ollama",
+      "provider": "ollama",
+      "model_id": "qwen3:1.7b",
+      "display_name": "Qwen3 1.7B",
+      "vision": false
+    },
+    {
+      "role": "simple_ollama",
+      "provider": "ollama",
+      "model_id": "gemma4:e4b",
+      "display_name": "Gemma 4 (4B)",
+      "vision": true
+    },
+    {
+      "role": "complex_sonnet",
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-sonnet-4-6",
+      "display_name": "Claude Sonnet 4.6",
+      "vision": true
+    },
+    {
+      "role": "complex_opus",
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-opus-4-6",
+      "display_name": "Claude Opus 4.6",
+      "vision": true
+    }
+  ]
+}
+```
+
+**Fields:**
+- `role` — one of `trivial_ollama`, `simple_ollama`, `complex_sonnet`,
+  `complex_opus`; maps directly to the router's tier names
+- `provider` — `"ollama"` or `"openrouter"`
+- `model_id` — the identifier passed to the provider API
+- `display_name` — human-readable label shown in the UI status line
+- `vision` — whether this model accepts image inputs (replaces the hardcoded
+  `_OLLAMA_VISION_MODELS` frozenset in `orchestrator.py`)
+
+### T22.1 — `models.json` and loader module
+**Status:** not started
+
+- Create `models.json` at the project root with the four default entries
+  above.
+- Create `src/model_config.py` with a `ModelConfig` dataclass and a
+  `load_models(path: str = "models.json") -> dict[str, ModelConfig]`
+  function that:
+  - Reads and validates the JSON (all required fields present, role is one
+    of the four known values, provider is `"ollama"` or `"openrouter"`).
+  - Returns a dict keyed by role.
+  - Falls back to hardcoded defaults and logs a warning if the file is
+    missing or invalid — the app must still start cleanly.
+- Add `models.json` to `.gitignore` so user customisations are not
+  committed (ship a `models.json.example` instead that is tracked).
+- Add unit tests in `tests/test_model_config.py` covering: valid file loads
+  correctly, missing file uses defaults, invalid JSON uses defaults, missing
+  required field uses defaults, unknown role is ignored.
+
+### T22.2 — Wire loader into application code
+**Status:** not started
+
+Replace all hardcoded model constants with values read from `load_models()`:
+
+- `src/router.py` — `OLLAMA_MODEL` and `OLLAMA_FAST_MODEL` sourced from
+  `simple_ollama` and `trivial_ollama` roles respectively.
+- `src/openrouter_client.py` — `SONNET_MODEL_ID` and `OPUS_MODEL_ID`
+  sourced from `complex_sonnet` and `complex_opus` roles.
+- `src/orchestrator.py` — `_OLLAMA_VISION_MODELS` frozenset replaced by
+  checking `ModelConfig.vision` on the loaded configs; display name strings
+  sourced from `display_name` field.
+- `src/app.py` — `OLLAMA_MODEL_DEFAULT` sourced from `simple_ollama` role.
+- All existing constants become module-level variables initialised from the
+  loader so the rest of each module's code is unchanged.
+
+### T22.3 — UI model status display
+**Status:** not started
+
+- Show the active model for each tier in the UI — a small `gr.Markdown`
+  beneath the chatbot (or inside a collapsible "Models" accordion) listing
+  the four roles and their configured `display_name` and `provider`.
+- This gives users immediate visual confirmation that their `models.json`
+  changes have taken effect without inspecting logs.
+- Update `tests/test_app_startup.py` to confirm the model info markdown is
+  rendered when the app is built.
 
 ---
 
