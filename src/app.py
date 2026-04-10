@@ -246,6 +246,11 @@ def build_app(
             visible=False,
         )
 
+        image_output = gr.Image(
+            label="Output image",
+            visible=False,
+        )
+
         history_state = gr.State([])
 
         def _memory_status(enabled: bool) -> str:
@@ -431,6 +436,17 @@ def build_app(
                 gr.update(value=""),
             )
 
+        def _image_update():
+            """Return a gr.update for the image output component.
+
+            Shows the image if the orchestrator has a pending image result,
+            then leaves it visible until the next query clears it.
+            """
+            img = orchestrator._pending_image
+            if img is not None:
+                return gr.update(visible=True, value=img)
+            return gr.update(visible=False, value=None)
+
         # ── Text input flow ─────────────────────────────────────────────────
 
         def handle_text(
@@ -459,6 +475,7 @@ def build_app(
                     "",
                     None,
                     _memory_status(mem_enabled),
+                    gr.update(visible=False, value=None),
                 ) + _hide_modal()
             display_history, updated_history, audio_out = process_text(
                 query,
@@ -478,6 +495,7 @@ def build_app(
                 "",
                 audio_out,
                 _memory_status(mem_enabled),
+                _image_update(),
             ) + _show_modal()
 
         _text_inputs = [
@@ -495,6 +513,7 @@ def build_app(
             text_input,
             audio_output,
             memory_status,
+            image_output,
         ] + _MODAL_OUTPUTS
 
         submit_btn.click(
@@ -549,6 +568,7 @@ def build_app(
                     gr.update(),
                     gr.update(),
                     gr.update(),
+                    gr.update(),
                 ) + _hide_modal()
             try:
                 display_history, updated_history, audio_out = process_audio(
@@ -569,6 +589,7 @@ def build_app(
                     audio_out,
                     gr.update(value=None),  # reset recorder
                     _memory_status(mem_enabled),
+                    _image_update(),
                 ) + _show_modal()
             except Exception as exc:  # noqa: BLE001
                 err_display = list(history) + [
@@ -583,6 +604,7 @@ def build_app(
                     None,
                     gr.update(value=None),  # reset recorder
                     _memory_status(mem_enabled),
+                    gr.update(visible=False, value=None),
                 ) + _hide_modal()
 
         audio_input.change(
@@ -602,6 +624,7 @@ def build_app(
                 audio_output,
                 audio_input,
                 memory_status,
+                image_output,
             ]
             + _MODAL_OUTPUTS,
         )

@@ -18,6 +18,7 @@ from src.openrouter_client import (
     OpenRouterClient,
 )
 from src.router import OLLAMA_FAST_MODEL, OLLAMA_MODEL, OllamaRouter
+from src.tools.image_utils import decode_image, is_image_sentinel
 from src.tools.registry import REGISTRY
 
 
@@ -70,6 +71,7 @@ class Orchestrator:
                     exc,
                 )
         self._pending_execution: dict | None = None
+        self._pending_image = None
         self._backend_labels = {
             "trivial_ollama": f"Ollama: {fast_model.split('/')[-1]}",
             "simple_ollama": f"Ollama: {ollama_model.split('/')[-1]}",
@@ -105,6 +107,7 @@ class Orchestrator:
             A tuple of ``(response_text, updated_history)`` where
             ``updated_history`` includes the new user and assistant turns.
         """
+        self._pending_image = None
         # Retrieve relevant past memories and inject as a system message.
         # augmented is a local copy — it is never written back to history,
         # so the injected context does not accumulate across turns.
@@ -258,11 +261,12 @@ class Orchestrator:
                 if "session_id" in sig.parameters:
                     kwargs["session_id"] = session_id
                 result = tool.callable(args_str, **kwargs)
-                return (
-                    result
-                    if result is not None
-                    else f"Error: {name} returned no result"
-                )
+                if result is None:
+                    return f"Error: {name} returned no result"
+                if is_image_sentinel(result):
+                    orchestrator._pending_image = decode_image(result)
+                    return "Image generated successfully."
+                return result
             except Exception as exc:
                 return f"Error executing {name}: {exc}"
 
