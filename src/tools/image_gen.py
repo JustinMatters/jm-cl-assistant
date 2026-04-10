@@ -87,7 +87,7 @@ def _generate_local(prompt: str) -> bytes:
         Exception: On model load or inference failure.
     """
     import torch
-    from diffusers import AutoPipelineForText2Image
+    from diffusers.pipelines.auto_pipeline import AutoPipelineForText2Image
 
     global _pipeline  # noqa: PLW0603
 
@@ -152,7 +152,7 @@ def _search_cc0(prompt: str) -> bytes:
     img = Image.open(io.BytesIO(raw)).convert("RGB")
     # Resize if very large to keep response size reasonable.
     if max(img.size) > 1024:
-        img.thumbnail((1024, 1024), Image.LANCZOS)
+        img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
     return encode_image(img)
 
 

@@ -80,7 +80,7 @@ class ToolDefinition:
     default_enabled: bool
     min_tier: str
     approach: str
-    callable: Callable[..., str | None]
+    callable: Callable[..., str | bytes | None]
     category: str = "general"
     is_async: bool = False
     parameters_schema: dict | None = None
