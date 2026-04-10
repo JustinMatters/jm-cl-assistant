@@ -8,13 +8,17 @@ to show or hide LLM chain-of-thought ``<think>`` tags.
 import argparse
 import os
 import subprocess
+import tempfile
 import time
 from uuid import uuid4
 
 import gradio as gr
 import ollama
 
-from src.helpers import suppress_connection_reset_errors
+from src.helpers import (
+    format_history_as_markdown,
+    suppress_connection_reset_errors,
+)
 from src.model_config import load_models
 from src.orchestrator import Orchestrator
 from src.process_audio import stream_process_audio
@@ -279,6 +283,35 @@ def build_app(
         )
 
         history_state = gr.State([])
+
+        def _export_conversation(history: list) -> str | None:
+            """Write history to a temp Markdown file and return its path.
+
+            Returns:
+                Path to the generated ``.md`` file, or ``None`` if the
+                history is empty.
+            """
+            if not history:
+                return None
+            md = format_history_as_markdown(history)
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w",
+                suffix=".md",
+                delete=False,
+                encoding="utf-8",
+                prefix="conversation_",
+            )
+            tmp.write(md)
+            tmp.close()
+            return tmp.name
+
+        gr.DownloadButton(
+            label="Export conversation",
+            value=_export_conversation,
+            inputs=[history_state],
+            variant="secondary",
+            size="sm",
+        )
 
         def _memory_status(enabled: bool) -> str:
             if not enabled or orchestrator._memory is None:
