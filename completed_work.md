@@ -1394,3 +1394,108 @@ receive the result, and continue reasoning before returning to the user.
 - Add unit tests in `tests/test_code_exec.py`
 
 ---
+
+
+---
+
+## Phase 20 -- Extended Tools
+
+### Overview
+
+Seven new capabilities.  **T20.1 should be done first** -- it replaces the
+default local model and may simplify the vision routing in later tickets.
+T20.2 and T20.3 are enabling tickets that later tools depend on; the
+remaining four (T20.4-T20.7) can be built in any order once those two are
+in place.
+
+**Shared image output mechanism (T20.3):** Tools that produce images
+(flowcharts, data plots, generated images) return their output as a
+`bytes` object tagged with the prefix `__IMAGE__:` followed by a
+base64-encoded PNG.  The orchestrator detects this sentinel and routes the
+payload to a `gr.Image` output component added to the Gradio UI, leaving
+the normal text path unchanged for tools that return strings.
+
+**New dependencies required:**
+
+| Package | Purpose | Ticket |
+|---------|---------|--------|
+| `pypdf` | PDF text extraction | T20.2 |
+| `python-docx` | DOCX text extraction | T20.2 |
+| `graphviz` (Python + system binary) | DOT to PNG rendering | T20.4 |
+| `polars` | DataFrame reads / summary stats | T20.6 |
+| `matplotlib` | Plot generation | T20.6 |
+| `openpyxl` | Excel file support for polars | T20.6 |
+| `diffusers` | Local diffusion image generation | T20.7 |
+| `transformers` | Model loading for diffusers | T20.7 |
+| `accelerate` | Diffusers performance layer | T20.7 |
+
+`torch` is already declared; `trafilatura` (HTML extraction) is already present.
+
+---
+
+### T20.1 -- Gemma 4 Model Evaluation and Migration
+**Status:** complete
+
+Adopted model: `gemma4:e4b` replaces `sam860/deepseek-r1-0528-qwen3:8b` as the
+`simple_ollama` model. Natively multimodal (text + vision). Changes: `src/app.py`
+`OLLAMA_MODEL_DEFAULT`, `src/router.py` `OLLAMA_MODEL`, README.md, CLAUDE.md updated.
+
+---
+
+### T20.2 -- File Reader Tool (local path + URL)
+**Status:** complete
+
+`src/tools/file_reader.py` -- Approach B tool. Reads PDF (pypdf), DOCX (python-docx),
+TXT (stdlib), HTML (trafilatura) from local path or URL. Truncates at 4000 chars.
+Reuses `_validate_url()` from url_reader. Tests in `tests/test_file_reader.py`.
+Dependencies: `pypdf`, `python-docx`.
+
+---
+
+### T20.3 -- Image Output Infrastructure
+**Status:** complete
+
+`src/tools/image_utils.py` -- `encode_image()`, `decode_image()`, `is_image_sentinel()`.
+Sentinel format: `b"__IMAGE__:" + base64(png)`. Orchestrator stores decoded PIL Image in
+`_pending_image`; Gradio `gr.Image` output component shows it. Tests in `tests/test_image_utils.py`.
+
+---
+
+### T20.4 -- Flowchart Generation Tool
+**Status:** complete
+
+`src/tools/flowchart.py` -- Approach B. LLM emits Graphviz DOT; `graphviz.Source.pipe(format="png")`
+renders to PNG returned via sentinel. Handles `ExecutableNotFound` with install instructions.
+Tests in `tests/test_flowchart.py`. Dependency: `graphviz` (Python + system binary).
+
+---
+
+### T20.5 -- Vision API Support
+**Status:** complete
+
+Image attachment via `gr.Image(type="pil")` input. Threaded through `handle_text` /
+`handle_audio` -> `process_text` / `process_audio` -> `orchestrator.respond(image=)`.
+Non-vision Ollama tiers escalate to `complex_sonnet`. `_OLLAMA_VISION_MODELS` frozenset.
+Ollama: `images` key in message dict. OpenRouter: `image_url` content block.
+Tests in `tests/test_vision.py`.
+
+---
+
+### T20.6 -- Data Analysis Tool (Polars + Matplotlib)
+**Status:** complete
+
+`src/tools/data_analysis.py` -- Approach B. Actions: `summarise` (shape, dtypes, describe,
+head 5) and `plot` (bar/line/scatter/histogram via Matplotlib Agg backend, returned as sentinel).
+Loads CSV (`polars.read_csv`) and Excel (`polars.read_excel`/fastexcel). Tests in
+`tests/test_data_analysis.py`. Dependencies: `polars`, `matplotlib`, `fastexcel`.
+
+---
+
+### T20.7 -- Image Generation Tool
+**Status:** complete
+
+`src/tools/image_gen.py` -- Approach B, `default_enabled=False`. Three modes: `local`
+(SDXL-Turbo, CUDA required, ~6.7 GB first-use download), `search` (Openverse CC0 API,
+no key), `auto` (local first, search fallback). Pipeline cached at module level.
+gr.Markdown VRAM warning in Tools accordion. Tests in `tests/test_image_gen.py`.
+Dependencies: `diffusers`, `transformers`, `accelerate`.
