@@ -281,7 +281,7 @@ User Input (text | Whisper speech)
 | 22 | Model Configuration File | T22.1 → T22.3 | complete |
 | 23 | Streaming Responses | T23.1 → T23.4 | complete |
 | 24 | Context Window Trimming | T24.1 → T24.4 | complete |
-| 25 | Conversation Export | T25.1 → T25.3 | not started |
+| 25 | Conversation Export | T25.1 → T25.3 | complete |
 | 26 | Token and Cost Display | T26.1 → T26.5 | not started |
 | 27 | Session Persistence | T27.1 → T27.4 | not started |
 | 28 | Coverage Report | T28.1 → T28.3 | not started |
@@ -412,21 +412,21 @@ download button that serialises the current Gradio history state to a
 Markdown file and offers it for download.
 
 ### T25.1 — Export formatter
-**Status:** not started
+**Status:** complete
 
 Add `format_history_as_markdown(history: list[dict]) -> str` to
 `src/helpers.py`.  Each turn becomes a `**User:**` / `**Assistant:**` block
 separated by horizontal rules.  Include a timestamp header at the top.
 
 ### T25.2 — Download button in the Gradio UI
-**Status:** not started
+**Status:** complete
 
 Add a `gr.DownloadButton` (or `gr.File`) to `src/app.py` that, when clicked,
 calls the formatter and serves the result as `conversation.md`.  Wire it to
 the `history_state` so it always reflects the current session.
 
 ### T25.3 — Unit tests for export
-**Status:** not started
+**Status:** complete
 
 Tests covering: empty history produces a valid header-only file, user and
 assistant turns are formatted correctly, special Markdown characters in

@@ -1,5 +1,6 @@
 """Utility helpers shared across the jm-cl-assistant source modules."""
 
+import datetime
 import io
 import logging
 import re
@@ -100,6 +101,43 @@ def to_wav_bytes(arr: np.ndarray, sample_rate: int) -> bytes:
         wf.setframerate(sample_rate)
         wf.writeframes(arr_int16.tobytes())
     return buf.getvalue()
+
+
+def format_history_as_markdown(history: list[dict]) -> str:
+    """Format conversation history as a Markdown document.
+
+    Each user+assistant exchange is separated by a horizontal rule.
+    System messages are excluded.  A timestamp header is included at
+    the top so exported files are self-describing.
+
+    Args:
+        history: List of ``{"role": ..., "content": ...}`` message dicts.
+
+    Returns:
+        A Markdown-formatted string suitable for saving as a ``.md`` file.
+    """
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lines: list[str] = [
+        "# Conversation Export",
+        "",
+        f"_Exported: {now}_",
+    ]
+    first_turn = True
+    for msg in history:
+        role = msg.get("role", "")
+        content = msg.get("content") or ""
+        if role == "user":
+            if not first_turn:
+                lines.append("")
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+            lines.append(f"**User:** {content}")
+            first_turn = False
+        elif role == "assistant":
+            lines.append("")
+            lines.append(f"**Assistant:** {content}")
+    return "\n".join(lines) + "\n"
 
 
 def count_tokens(messages: list[dict]) -> int:
