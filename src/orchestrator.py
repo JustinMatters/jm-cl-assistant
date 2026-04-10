@@ -7,6 +7,7 @@ Claude responses, and a direct Ollama client for trivial and simple queries.
 import inspect
 import json
 import logging
+from collections.abc import Iterator
 from uuid import uuid4
 
 import ollama
@@ -426,3 +427,237 @@ class Orchestrator:
                     f"(Tool loop reached {max_tool_iterations} iterations"
                     " without a final response)"
                 )
+
+    def _ollama_stream(
+        self,
+        query: str,
+        history: list,
+        model: str,
+        image=None,
+    ) -> Iterator[str]:
+        """Stream content chunks from a local Ollama model.
+
+        Does not support tool calling — use ``_ollama_respond`` for
+        Approach B agentic paths that require full response inspection.
+
+        Args:
+            query: The user's input text.
+            history: Conversation history as a list of message dicts.
+            model: The Ollama model name to call.
+            image: Optional PIL Image encoded as base64 PNG image data.
+
+        Yields:
+            Content string chunks as they arrive from the Ollama stream.
+        """
+        user_msg: dict = {"role": "user", "content": query}
+        if image is not None:
+            import base64
+            import io
+
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            user_msg["images"] = [base64.b64encode(buf.getvalue()).decode()]
+        messages = list(history) + [user_msg]
+        try:
+            stream = ollama.chat(model=model, messages=messages, stream=True)
+            for chunk in stream:
+                content = chunk["message"]["content"]
+                if content:
+                    yield content
+        except Exception as exc:
+            yield (f"(Ollama error: {exc} — please check it is running)")
+
+    def stream_respond(
+        self,
+        query: str,
+        history: list,
+        memory_enabled: bool = True,
+        enabled_tools: set[str] | None = None,
+        image=None,
+    ) -> Iterator[tuple[str, list | None]]:
+        """Generate a streaming response, yielding incremental chunks.
+
+        Yields ``(partial_text, None)`` for intermediate chunks during
+        LLM streaming and a final ``(full_text, updated_history)`` on
+        completion.  Approach A tool results and Approach B agentic
+        loops are not streamed — they produce a single final yield.
+
+        Args:
+            query: The user's input text.
+            history: Current conversation history.
+            memory_enabled: When ``False``, memory reads/writes are
+              skipped for this call.
+            enabled_tools: Set of tool names currently active in the UI.
+              ``None`` falls back to per-tool ``default_enabled`` flags.
+            image: Optional PIL Image attached to the query.
+
+        Yields:
+            ``(text, updated_history_or_none)`` where
+            ``updated_history_or_none`` is ``None`` for intermediate
+            chunks and the updated history list for the final yield.
+        """
+        self._pending_image = None
+        context_block = ""
+        if self._memory is not None and memory_enabled and query.strip():
+            try:
+                context_block = self._memory.get_context_block(query)
+            except Exception as exc:
+                logging.warning("Memory context retrieval failed: %s", exc)
+        augmented = (
+            [{"role": "system", "content": context_block}] + list(history)
+            if context_block
+            else list(history)
+        )
+        if enabled_tools is not None:
+            active_names = enabled_tools
+        else:
+            active_names = {t.name for t in REGISTRY.all() if t.default_enabled}
+
+        classification = self._router.classify(query, active_names)
+
+        tool_result = REGISTRY.dispatch(
+            classification,
+            query,
+            active_names,
+            classification,
+            store=self._memory if memory_enabled else None,
+        )
+        if tool_result is not None:
+            matched = next(
+                (
+                    t
+                    for t in REGISTRY.enabled_tools(active_names)
+                    if t.router_tier == classification
+                ),
+                None,
+            )
+            self.last_backend = matched.label if matched else classification
+            response = tool_result
+            updated_history = list(history) + [
+                {"role": "user", "content": query},
+                {"role": "assistant", "content": response},
+            ]
+            if self._memory is not None and memory_enabled:
+                try:
+                    self._memory.add(
+                        f"User: {query}\nAssistant: {response}",
+                        source="conversation",
+                        session_id=self.session_id,
+                    )
+                except Exception as exc:
+                    logging.warning("Memory write failed: %s", exc)
+            yield response, updated_history
+            return
+
+        effective = (
+            classification
+            if classification in self._backend_labels
+            else "trivial_llm"
+        )
+        if image is not None and effective in (
+            "trivial_llm",
+            "simple_llm",
+        ):
+            ollama_model = (
+                self._fast_model
+                if effective == "trivial_llm"
+                else self._ollama_model
+            )
+            if not _model_supports_vision(ollama_model):
+                effective = "advanced_llm"
+        self.last_backend = self._backend_labels[effective]
+        b_schemas = REGISTRY.schemas(active_names)
+
+        if b_schemas:
+            # Approach B tool loop — run synchronously, yield final only.
+            b_executor = self._make_b_executor(active_names)
+            if effective == "trivial_llm":
+                response = self._ollama_respond(
+                    query,
+                    augmented,
+                    self._fast_model,
+                    tools=b_schemas,
+                    tool_executor=b_executor,
+                    image=image,
+                )
+            elif effective == "simple_llm":
+                response = self._ollama_respond(
+                    query,
+                    augmented,
+                    self._ollama_model,
+                    tools=b_schemas,
+                    tool_executor=b_executor,
+                    image=image,
+                )
+            elif effective == "advanced_llm":
+                response = self._claude.ask(
+                    query,
+                    "sonnet",
+                    augmented,
+                    tools=b_schemas,
+                    tool_executor=b_executor,
+                    image=image,
+                )
+            else:
+                response = self._claude.ask(
+                    query,
+                    "opus",
+                    augmented,
+                    tools=b_schemas,
+                    tool_executor=b_executor,
+                    image=image,
+                )
+            updated_history = list(history) + [
+                {"role": "user", "content": query},
+                {"role": "assistant", "content": response},
+            ]
+            if self._memory is not None and memory_enabled:
+                try:
+                    self._memory.add(
+                        f"User: {query}\nAssistant: {response}",
+                        source="conversation",
+                        session_id=self.session_id,
+                    )
+                except Exception as exc:
+                    logging.warning("Memory write failed: %s", exc)
+            yield response, updated_history
+            return
+
+        # No Approach B tools — stream the response.
+        if effective == "trivial_llm":
+            stream: Iterator[str] = self._ollama_stream(
+                query, augmented, self._fast_model, image=image
+            )
+        elif effective == "simple_llm":
+            stream = self._ollama_stream(
+                query, augmented, self._ollama_model, image=image
+            )
+        elif effective == "advanced_llm":
+            stream = self._claude.stream_ask(
+                query, "sonnet", augmented, image=image
+            )
+        else:
+            stream = self._claude.stream_ask(
+                query, "opus", augmented, image=image
+            )
+
+        accumulated = ""
+        for chunk in stream:
+            accumulated += chunk
+            yield accumulated, None
+
+        response = accumulated
+        updated_history = list(history) + [
+            {"role": "user", "content": query},
+            {"role": "assistant", "content": response},
+        ]
+        if self._memory is not None and memory_enabled:
+            try:
+                self._memory.add(
+                    f"User: {query}\nAssistant: {response}",
+                    source="conversation",
+                    session_id=self.session_id,
+                )
+            except Exception as exc:
+                logging.warning("Memory write failed: %s", exc)
+        yield response, updated_history

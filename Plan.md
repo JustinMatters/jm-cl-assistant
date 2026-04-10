@@ -279,7 +279,7 @@ User Input (text | Whisper speech)
 | 20 | Extended Tools | T20.1 → T20.7 | complete |
 | 21 | Runtime Feature Switches | T21.1 → T21.3 | complete |
 | 22 | Model Configuration File | T22.1 → T22.3 | complete |
-| 23 | Streaming Responses | T23.1 → T23.4 | not started |
+| 23 | Streaming Responses | T23.1 → T23.4 | complete |
 | 24 | Context Window Trimming | T24.1 → T24.4 | not started |
 | 25 | Conversation Export | T25.1 → T25.3 | not started |
 | 26 | Token and Cost Display | T26.1 → T26.5 | not started |
@@ -317,14 +317,14 @@ Gradio supports `yield`-based streaming — the generator produces response
 chunks as they arrive and Gradio updates the chat panel incrementally.
 
 ### T23.1 — Stream Ollama responses
-**Status:** not started
+**Status:** complete
 
 Modify `_ollama_respond` in `src/orchestrator.py` to accept a `stream=True`
 parameter and yield content chunks from the `ollama.chat` streaming API.
 Non-streaming callers (tests, tool loop) must continue to work unchanged.
 
 ### T23.2 — Stream OpenRouter responses
-**Status:** not started
+**Status:** complete
 
 Modify `OpenRouterClient.ask` in `src/openrouter_client.py` to accept a
 `stream=True` parameter and yield content chunks from the OpenAI-compatible
@@ -333,7 +333,7 @@ agentic loop (which needs the full response to detect tool calls) still
 operates in non-streaming mode.
 
 ### T23.3 — Wire streaming into the Gradio UI
-**Status:** not started
+**Status:** complete
 
 Update `process_text` and `process_audio` in `src/process_text.py` and
 `src/process_audio.py` to accept a `stream` flag and `yield` intermediate
@@ -343,7 +343,7 @@ or equivalent).  TTS synthesis must only be triggered on the final complete
 response, not on partial chunks.
 
 ### T23.4 — Unit tests for streaming
-**Status:** not started
+**Status:** complete
 
 Add tests covering: streamed chunks are concatenated correctly, TTS is called
 only once with the full response, tool-use path bypasses streaming, and

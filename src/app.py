@@ -17,8 +17,8 @@ import ollama
 from src.helpers import suppress_connection_reset_errors
 from src.model_config import load_models
 from src.orchestrator import Orchestrator
-from src.process_audio import process_audio
-from src.process_text import process_text
+from src.process_audio import stream_process_audio
+from src.process_text import stream_process_text
 from src.router import OLLAMA_FAST_MODEL
 from src.speech_input import WhisperTranscriber
 from src.speech_output import KokoroSpeaker, check_kokoro_files
@@ -522,24 +522,29 @@ def build_app(
         def handle_text(
             query, history, out_mode, show, voice, mem_enabled, tools, img
         ):
-            """Handle a text query submitted via the text input or send button.
+            """Handle a text query, streaming the response incrementally.
+
+            Yields intermediate display-history updates as the LLM
+            streams its reply, then a final yield that updates all
+            outputs (history state, cleared text input, audio, modals).
 
             Args:
                 query: The user's typed message.
                 history: Current conversation history.
-                out_mode: Output mode — ``"text"`` or ``"text and speech"``.
+                out_mode: Output mode — ``"text"`` or
+                  ``"text and speech"``.
                 show: Whether to show ``<think>`` tags in the response.
                 voice: Kokoro voice ID for TTS synthesis.
                 mem_enabled: Whether memory reads/writes are active.
                 tools: Set of currently enabled tool names from the UI.
+                img: Optional PIL Image attached to the query.
 
-            Returns:
-                A tuple of ``(display_history, history_state, cleared_input,
-                audio_out, memory_status, overlay, modal, code)`` suitable
-                for Gradio's outputs.
+            Yields:
+                Ten-element tuples matching ``_text_outputs`` — each
+                successive yield updates the Gradio UI.
             """
             if not query.strip():
-                return (
+                yield (
                     history,
                     history,
                     "",
@@ -548,7 +553,12 @@ def build_app(
                     gr.update(visible=False, value=None),
                     gr.update(),
                 ) + _hide_modal()
-            display_history, updated_history, audio_out = process_text(
+                return
+            for (
+                display_history,
+                updated_history,
+                audio_out,
+            ) in stream_process_text(
                 query,
                 history,
                 out_mode,
@@ -560,16 +570,29 @@ def build_app(
                 memory_enabled=mem_enabled,
                 enabled_tools=tools,
                 image=img,
-            )
-            return (
-                display_history,
-                updated_history,
-                "",
-                audio_out,
-                _memory_status(mem_enabled),
-                _image_update(),
-                gr.update(value=None),  # clear image input after send
-            ) + _show_modal()
+            ):
+                if updated_history is None:
+                    # Intermediate chunk — only refresh chatbot.
+                    yield (
+                        display_history,
+                        history,
+                        gr.update(),
+                        gr.update(),
+                        gr.update(),
+                        gr.update(),
+                        gr.update(),
+                    ) + _hide_modal()
+                else:
+                    # Final chunk — update all outputs.
+                    yield (
+                        display_history,
+                        updated_history,
+                        "",
+                        audio_out,
+                        _memory_status(mem_enabled),
+                        _image_update(),
+                        gr.update(value=None),
+                    ) + _show_modal()
 
         _text_inputs = [
             text_input,
@@ -613,31 +636,31 @@ def build_app(
         def handle_audio(
             audio_data, history, out_mode, show, voice, mem_enabled, tools, img
         ):
-            """Handle a microphone recording submitted via the audio input.
+            """Handle a microphone recording, streaming the response.
 
-            Ignores ``None`` audio (re-fired after recorder reset). On
-            success delegates to ``process_audio`` and resets the recorder.
-            On failure appends an error bubble and still resets the recorder
-            so the UI remains usable.
+            Ignores ``None`` audio (re-fired after recorder reset).
+            Delegates to ``stream_process_audio`` for validation,
+            transcription, and LLM streaming.  The recorder is reset
+            on the final yield so playback is not interrupted.
 
             Args:
                 audio_data: ``(sample_rate, audio_array)`` tuple from
                   ``gr.Audio``, or ``None`` when the recorder is reset.
                 history: Current conversation history.
-                out_mode: Output mode — ``"text"`` or ``"text and speech"``.
+                out_mode: Output mode — ``"text"`` or
+                  ``"text and speech"``.
                 show: Whether to show ``<think>`` tags in the response.
                 voice: Kokoro voice ID for TTS synthesis.
                 mem_enabled: Whether memory reads/writes are active.
                 tools: Set of currently enabled tool names from the UI.
+                img: Optional PIL Image attached to the query.
 
-            Returns:
-                A tuple of ``(chatbot, history_state, audio_output,
-                audio_input, memory_status, overlay, modal, code)``
-                suitable for Gradio's outputs.
+            Yields:
+                Ten-element tuples matching the audio ``outputs`` list.
             """
             if audio_data is None:
                 # Re-fired by our own reset — leave everything unchanged.
-                return (
+                yield (
                     gr.update(),
                     history,
                     gr.update(),
@@ -646,8 +669,13 @@ def build_app(
                     gr.update(),
                     gr.update(),
                 ) + _hide_modal()
+                return
             try:
-                display_history, updated_history, audio_out = process_audio(
+                for (
+                    display_history,
+                    updated_history,
+                    audio_out,
+                ) in stream_process_audio(
                     audio_data,
                     history,
                     out_mode,
@@ -658,29 +686,38 @@ def build_app(
                     speaker,
                     memory_enabled=mem_enabled,
                     enabled_tools=tools,
-                    image=img,
-                )
-                return (
-                    display_history,
-                    updated_history,
-                    audio_out,
-                    gr.update(value=None),  # reset recorder
-                    _memory_status(mem_enabled),
-                    _image_update(),
-                    gr.update(value=None),  # clear image input
-                ) + _show_modal()
+                ):
+                    if updated_history is None:
+                        # Intermediate chunk — only refresh chatbot.
+                        yield (
+                            display_history,
+                            history,
+                            gr.update(),
+                            gr.update(),
+                            gr.update(),
+                            gr.update(),
+                            gr.update(),
+                        ) + _hide_modal()
+                    else:
+                        # Final — update all outputs and reset recorder.
+                        yield (
+                            display_history,
+                            updated_history,
+                            audio_out,
+                            gr.update(value=None),
+                            _memory_status(mem_enabled),
+                            _image_update(),
+                            gr.update(value=None),
+                        ) + _show_modal()
             except Exception as exc:  # noqa: BLE001
                 err_display = list(history) + [
-                    {
-                        "role": "assistant",
-                        "content": f"(Error: {exc})",
-                    }
+                    {"role": "assistant", "content": f"(Error: {exc})"}
                 ]
-                return (
+                yield (
                     err_display,
                     history,
                     None,
-                    gr.update(value=None),  # reset recorder
+                    gr.update(value=None),
                     _memory_status(mem_enabled),
                     gr.update(visible=False, value=None),
                     gr.update(),
