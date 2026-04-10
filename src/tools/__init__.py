@@ -12,6 +12,7 @@ from src.tools import calculator as _calculator  # noqa: F401
 from src.tools import code_exec as _code_exec  # noqa: F401
 from src.tools import converter as _converter  # noqa: F401
 from src.tools import currency as _currency  # noqa: F401
+from src.tools import data_analysis as _data_analysis  # noqa: F401
 from src.tools import datetime_tool as _datetime_tool  # noqa: F401
 from src.tools import dictionary as _dictionary  # noqa: F401
 from src.tools import file_reader as _file_reader  # noqa: F401
