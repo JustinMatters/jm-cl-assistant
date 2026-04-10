@@ -1,7 +1,7 @@
 """Query complexity classifier backed by a local Ollama model.
 
-Routes each user query to one of four tiers — trivial_ollama,
-simple_ollama, complex_sonnet, or complex_opus — by prompting a local
+Routes each user query to one of four tiers — trivial_llm,
+simple_llm, advanced_llm, or complex_llm — by prompting a local
 LLM to classify the query's difficulty.  When tools are enabled their
 router tiers are appended to the valid set and system prompt dynamically;
 disabling a tool removes its tier from the prompt entirely, saving tokens
@@ -12,25 +12,27 @@ import warnings
 
 import ollama
 
+from src.model_config import load_models
 from src.tools.registry import REGISTRY
 
-OLLAMA_MODEL = "gemma4:e4b"
-OLLAMA_FAST_MODEL = "qwen3:1.7b"
+_MODEL_CONFIG = load_models()
+OLLAMA_MODEL = _MODEL_CONFIG["simple_llm"].model_id
+OLLAMA_FAST_MODEL = _MODEL_CONFIG["trivial_llm"].model_id
 
 _BASE_VALID = frozenset(
     {
-        "trivial_ollama",
-        "simple_ollama",
-        "complex_sonnet",
-        "complex_opus",
+        "trivial_llm",
+        "simple_llm",
+        "advanced_llm",
+        "complex_llm",
     }
 )
-_FALLBACK = "trivial_ollama"
+_FALLBACK = "trivial_llm"
 
 _PROMPT_HEADER = (
     "You are a query complexity classifier. "
     "Given a user query, respond with EXACTLY ONE of these tokens:\n\n"
-    "  trivial_ollama — greetings, and any question with a short definitive "
+    "  trivial_llm — greetings, and any question with a short definitive "
     "answer that a schoolchild would know: capital cities, country facts, "
     "basic geography, historical dates, famous people, yes/no facts, "
     "translations, colours, simple definitions "
@@ -40,14 +42,14 @@ _PROMPT_HEADER = (
 )
 
 _PROMPT_LLM_TIERS = (
-    "  simple_ollama  — questions requiring a paragraph or more to answer: "
+    "  simple_llm    — questions requiring a paragraph or more to answer: "
     "how-to instructions, explanations of concepts, short summaries, "
     "defining acronyms or terms "
     "(e.g. 'how does photosynthesis work', "
     "'explain what a REST API is', 'what does API stand for')\n"
-    "  complex_sonnet — analysis, essays, multi-step reasoning, "
+    "  advanced_llm  — analysis, essays, multi-step reasoning, "
     "comparisons, structured writing; NOT short summaries or definitions\n"
-    "  complex_opus   — cutting-edge research, expert proofs, "
+    "  complex_llm   — cutting-edge research, expert proofs, "
     "highly complex multi-domain problems; "
     "NOT short summaries or definitions\n"
 )
@@ -81,11 +83,11 @@ class OllamaRouter:
 
         Prompts the local Ollama model with the query and parses the
         single-token classification response.  Falls back to
-        ``"trivial_ollama"`` if the model returns an unrecognised value.
+        ``"trivial_llm"`` if the model returns an unrecognised value.
 
         The system prompt and valid-token set are built dynamically from
-        ``enabled_tools``.  Base LLM tiers (``trivial_ollama``,
-        ``simple_ollama``, ``complex_sonnet``, ``complex_opus``) are
+        ``enabled_tools``.  Base LLM tiers (``trivial_llm``,
+        ``simple_llm``, ``advanced_llm``, ``complex_llm``) are
         always present.  Each enabled tool's ``router_tier`` is appended
         in registration order; disabling a tool removes its tier from
         the prompt entirely.
@@ -101,7 +103,7 @@ class OllamaRouter:
         Returns:
             A classification token — one of the four base LLM tiers or
             a registered tool's ``router_tier`` if that tool is enabled.
-            Falls back to ``"trivial_ollama"`` on error or unrecognised
+            Falls back to ``"trivial_llm"`` on error or unrecognised
             output.
         """
         active = enabled_tools or set()

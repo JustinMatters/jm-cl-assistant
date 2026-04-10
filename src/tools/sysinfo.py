@@ -176,7 +176,7 @@ REGISTRY.register(
             "what Ollama models are loaded",
         ],
         default_enabled=True,
-        min_tier="trivial_ollama",
+        min_tier="trivial_llm",
         approach="A",
         callable=_handle_sysinfo_query,
         category="system",

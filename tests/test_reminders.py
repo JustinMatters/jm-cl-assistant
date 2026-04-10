@@ -191,4 +191,4 @@ class TestGlobalRegistration:
         for name in ("set_reminder", "list_reminders"):
             tool = next(t for t in REGISTRY.all() if t.name == name)
             assert tool.approach == "B"
-            assert tool.min_tier == "simple_ollama"
+            assert tool.min_tier == "simple_llm"

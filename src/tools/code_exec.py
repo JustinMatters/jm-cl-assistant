@@ -94,7 +94,7 @@ REGISTRY.register(
             "execute: [x**2 for x in range(10)]",
         ],
         default_enabled=False,
-        min_tier="complex_sonnet",
+        min_tier="advanced_llm",
         approach="B",
         callable=_run_code_callable,
         category="code",

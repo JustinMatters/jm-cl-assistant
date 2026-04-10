@@ -8,7 +8,9 @@ from uuid import uuid4
 import chromadb
 import ollama
 
-_EMBED_MODEL = "nomic-embed-text"
+from src.model_config import load_models
+
+_EMBED_MODEL = load_models()["vector_db_embedding"].model_id
 
 
 class MemoryStore:

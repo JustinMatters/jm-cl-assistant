@@ -217,7 +217,7 @@ REGISTRY.register(
             "what's the time in New York",
         ],
         default_enabled=True,
-        min_tier="trivial_ollama",
+        min_tier="trivial_llm",
         approach="A",
         callable=_handle_datetime_query,
         category="time",

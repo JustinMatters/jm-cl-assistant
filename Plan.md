@@ -277,8 +277,8 @@ User Input (text | Whisper speech)
 | 18 | RAG Memory | T18.1 → T18.6 | complete |
 | 19 | Tools | T19.1 → T19.20 | complete |
 | 20 | Extended Tools | T20.1 → T20.7 | complete |
-| 21 | Runtime Feature Switches | T21.1 → T21.3 | not started |
-| 22 | Model Configuration File | T22.1 → T22.3 | not started |
+| 21 | Runtime Feature Switches | T21.1 → T21.3 | complete |
+| 22 | Model Configuration File | T22.1 → T22.3 | complete |
 
 ---
 
@@ -297,7 +297,7 @@ must not be imported or initialised, saving the associated memory and startup
 time.
 
 ### T21.1 — Disable TTS (`--no-tts`)
-**Status:** not started
+**Status:** complete
 
 Add a `--no-tts` CLI flag to `src/app.py`.  When set:
 
@@ -314,7 +314,7 @@ Add a `--no-tts` CLI flag to `src/app.py`.  When set:
   speaker is `None` and the voice selector is hidden.
 
 ### T21.2 — Disable STT (`--no-stt`)
-**Status:** not started
+**Status:** complete
 
 Add a `--no-stt` CLI flag to `src/app.py`.  When set:
 
@@ -330,7 +330,7 @@ Note: the `--whisper-model` flag is **not** replaced here — it is removed
 entirely in T22.2, where Whisper model size moves to `models.json`.
 
 ### T21.3 — Disable Tool Use (`--no-tools`)
-**Status:** not started
+**Status:** complete
 
 Add a `--no-tools` CLI flag to `src/app.py`.  When set:
 
@@ -448,7 +448,7 @@ codebase, including all tool `min_tier` fields, `registry.py` rank table,
   generation or download
 
 ### T22.1 — `models.json` and loader module
-**Status:** not started
+**Status:** complete
 
 - Create `models.json` at the project root with the seven default entries
   above.
@@ -469,7 +469,7 @@ codebase, including all tool `min_tier` fields, `registry.py` rank table,
   `diffusers_max_image_dimension` defaults to 512 when absent.
 
 ### T22.2 — Wire loader into application code
-**Status:** not started
+**Status:** complete
 
 Replace all hardcoded model constants with values read from `load_models()`
 and rename internal tier names throughout the codebase:
@@ -505,7 +505,7 @@ and rename internal tier names throughout the codebase:
   loader so the rest of each module's code is unchanged.
 
 ### T22.3 — UI model status display
-**Status:** not started
+**Status:** complete
 
 - Show the active model for each role in the UI — inside a collapsible
   "Models" accordion listing each role's `display_name` and `provider`.

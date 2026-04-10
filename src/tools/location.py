@@ -106,7 +106,7 @@ REGISTRY.register(
             "what country am I in",
         ],
         default_enabled=True,
-        min_tier="trivial_ollama",
+        min_tier="trivial_llm",
         approach="A",
         callable=_handle_location_query,
         category="web",

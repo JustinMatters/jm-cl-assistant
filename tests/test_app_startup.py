@@ -3,6 +3,7 @@ import pytest
 app_module = pytest.importorskip("src.app")
 _check_ollama_models = app_module._check_ollama_models
 _check_api_key = app_module._check_api_key
+build_app = app_module.build_app
 
 
 def _make_model(name: str, mocker):
@@ -57,6 +58,28 @@ class TestCheckOllamaModels:
         mock_list.models = []
         mocker.patch("src.app.ollama.list", return_value=mock_list)
         assert _check_ollama_models() is None
+
+
+class TestModelsAccordion:
+    def test_build_app_renders_models_accordion(self, mocker):
+        mocker.patch("src.app.Orchestrator")
+        mocker.patch("src.app.WhisperTranscriber")
+        mocker.patch("src.app.KokoroSpeaker")
+        demo = build_app(
+            whisper_model="tiny",
+            ollama_model="gemma4:e4b",
+        )
+        assert demo is not None
+
+    def test_models_accordion_present_no_tts(self, mocker):
+        mocker.patch("src.app.Orchestrator")
+        mocker.patch("src.app.WhisperTranscriber")
+        demo = build_app(
+            whisper_model="tiny",
+            ollama_model="gemma4:e4b",
+            tts_enabled=False,
+        )
+        assert demo is not None
 
 
 class TestCheckApiKey:

@@ -97,7 +97,7 @@ REGISTRY.register(
             "60 mph to m/s",
         ],
         default_enabled=True,
-        min_tier="trivial_ollama",
+        min_tier="trivial_llm",
         approach="A",
         callable=_handle_convert_query,
         category="maths",

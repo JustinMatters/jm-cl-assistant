@@ -48,11 +48,13 @@ class TestModelSupportsVision:
     def test_gemma4_with_registry_prefix(self):
         assert _model_supports_vision("google/gemma4:12b") is True
 
-    def test_llava_supported(self):
-        assert _model_supports_vision("llava:13b") is True
+    def test_llava_not_in_default_config(self):
+        # llava is not in the default models.json — add it to config to enable
+        assert _model_supports_vision("llava:13b") is False
 
-    def test_moondream_supported(self):
-        assert _model_supports_vision("moondream:latest") is True
+    def test_moondream_not_in_default_config(self):
+        # moondream is not in the default models.json — add it to enable
+        assert _model_supports_vision("moondream:latest") is False
 
     def test_deepseek_not_supported(self):
         assert _model_supports_vision("deepseek-r1:8b") is False
@@ -71,7 +73,7 @@ class TestModelSupportsVision:
 
 class TestRoutingEscalation:
     """When an image is attached and the Ollama model lacks vision, the
-    orchestrator must escalate to complex_sonnet."""
+    orchestrator must escalate to advanced_llm."""
 
     def _mock_router(self, orc, tier: str):
         orc._router.classify = MagicMock(return_value=tier)
@@ -79,7 +81,7 @@ class TestRoutingEscalation:
     def test_trivial_escalates_to_sonnet_for_non_vision_model(self, mocker):
         orc = _make_orchestrator(ollama_model="deepseek-r1:8b")
         orc._fast_model = "qwen3:1.7b"  # non-vision
-        self._mock_router(orc, "trivial_ollama")
+        self._mock_router(orc, "trivial_llm")
         mock_ask = mocker.patch.object(
             orc._claude, "ask", return_value="Claude response"
         )
@@ -92,7 +94,7 @@ class TestRoutingEscalation:
 
     def test_simple_escalates_to_sonnet_for_non_vision_model(self, mocker):
         orc = _make_orchestrator(ollama_model="deepseek-r1:8b")
-        self._mock_router(orc, "simple_ollama")
+        self._mock_router(orc, "simple_llm")
         mock_ask = mocker.patch.object(
             orc._claude, "ask", return_value="Claude response"
         )
@@ -102,7 +104,7 @@ class TestRoutingEscalation:
 
     def test_vision_model_stays_local(self, mocker):
         orc = _make_orchestrator(ollama_model="gemma4:e4b")
-        self._mock_router(orc, "simple_ollama")
+        self._mock_router(orc, "simple_llm")
         mock_ollama = mocker.patch("src.orchestrator.ollama.chat")
         mock_ollama.return_value = {
             "message": {"content": "Ollama response", "tool_calls": None}
@@ -114,7 +116,7 @@ class TestRoutingEscalation:
 
     def test_no_image_does_not_escalate(self, mocker):
         orc = _make_orchestrator(ollama_model="deepseek-r1:8b")
-        self._mock_router(orc, "trivial_ollama")
+        self._mock_router(orc, "trivial_llm")
         mock_ollama = mocker.patch("src.orchestrator.ollama.chat")
         mock_ollama.return_value = {
             "message": {"content": "Ollama response", "tool_calls": None}

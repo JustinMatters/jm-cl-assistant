@@ -159,7 +159,7 @@ class TestGlobalRegistration:
 
         tool = next(t for t in REGISTRY.all() if t.name == "url_reader")
         assert tool.approach == "B"
-        assert tool.min_tier == "complex_sonnet"
+        assert tool.min_tier == "advanced_llm"
         assert tool.parameters_schema is not None
 
     def test_url_reader_not_in_router_prompt(self):

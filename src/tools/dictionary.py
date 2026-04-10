@@ -120,7 +120,7 @@ REGISTRY.register(
             "meaning of perfidious",
         ],
         default_enabled=True,
-        min_tier="trivial_ollama",
+        min_tier="trivial_llm",
         approach="A",
         callable=_handle_define_query,
         category="general",
