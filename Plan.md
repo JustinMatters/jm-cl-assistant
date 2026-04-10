@@ -647,6 +647,9 @@ Add a `--no-stt` CLI flag to `src/app.py`.  When set:
 - Add unit tests confirming that with `--no-stt` the transcriber is `None`
   and the audio input is absent from the component tree.
 
+Note: the `--whisper-model` flag is **not** replaced here — it is removed
+entirely in T22.2, where Whisper model size moves to `models.json`.
+
 ### T21.3 — Disable Tool Use (`--no-tools`)
 **Status:** not started
 
@@ -667,15 +670,22 @@ Add a `--no-tools` CLI flag to `src/app.py`.  When set:
 
 ### Overview
 
-Model identities are currently hardcoded in four places: `src/router.py`
-(`OLLAMA_MODEL`, `OLLAMA_FAST_MODEL`), `src/openrouter_client.py`
-(`SONNET_MODEL_ID`, `OPUS_MODEL_ID`), and `src/app.py`
-(`OLLAMA_MODEL_DEFAULT`).  Changing any model requires editing source code.
+Model identities and several user-facing settings are currently hardcoded
+across multiple source files: `src/router.py` (`OLLAMA_MODEL`,
+`OLLAMA_FAST_MODEL`), `src/openrouter_client.py` (`SONNET_MODEL_ID`,
+`OPUS_MODEL_ID`), `src/app.py` (`OLLAMA_MODEL_DEFAULT`,
+`WHISPER_MODEL_DEFAULT`), `src/memory/store.py` (`_EMBED_MODEL`), and
+`src/tools/image_gen.py` (`_SDXL_MODEL`).  Changing any of these requires
+editing source code.
 
-This phase moves all model definitions into a single JSON file
-(`models.json`) at the project root so users can swap, add, or remove models
-without touching Python.  The file is read at startup; the application falls
-back to safe built-in defaults if the file is absent or malformed.
+This phase moves all of them into a single JSON file (`models.json`) at the
+project root so users can swap models without touching Python.  The file is
+read at startup; the application falls back to safe built-in defaults if the
+file is absent or malformed.
+
+As part of this phase the `--whisper-model` CLI flag is removed — the
+Whisper model size is now set in `models.json` instead.  The only
+STT-related CLI flag that remains is `--no-stt` (Phase 21).
 
 **JSON schema (one entry per logical role):**
 ```json
@@ -708,6 +718,27 @@ back to safe built-in defaults if the file is absent or malformed.
       "model_id": "anthropic/claude-opus-4-6",
       "display_name": "Claude Opus 4.6",
       "vision": true
+    },
+    {
+      "role": "embedding",
+      "provider": "ollama",
+      "model_id": "nomic-embed-text",
+      "display_name": "Nomic Embed Text",
+      "vision": false
+    },
+    {
+      "role": "whisper",
+      "provider": "local",
+      "model_id": "medium",
+      "display_name": "Whisper medium",
+      "vision": false
+    },
+    {
+      "role": "image_gen",
+      "provider": "local",
+      "model_id": "stabilityai/sdxl-turbo",
+      "display_name": "SDXL-Turbo",
+      "vision": false
     }
   ]
 }
@@ -715,28 +746,31 @@ back to safe built-in defaults if the file is absent or malformed.
 
 **Fields:**
 - `role` — one of `trivial_ollama`, `simple_ollama`, `complex_sonnet`,
-  `complex_opus`; maps directly to the router's tier names
-- `provider` — `"ollama"` or `"openrouter"`
-- `model_id` — the identifier passed to the provider API
-- `display_name` — human-readable label shown in the UI status line
+  `complex_opus`, `embedding`, `whisper`, `image_gen`
+- `provider` — `"ollama"`, `"openrouter"`, or `"local"` (local Python
+  library, not an API)
+- `model_id` — the identifier passed to the provider (Ollama model name,
+  OpenRouter model string, Whisper size, or HuggingFace repo ID)
+- `display_name` — human-readable label shown in the UI
 - `vision` — whether this model accepts image inputs (replaces the hardcoded
   `_OLLAMA_VISION_MODELS` frozenset in `orchestrator.py`)
 
 ### T22.1 — `models.json` and loader module
 **Status:** not started
 
-- Create `models.json` at the project root with the four default entries
+- Create `models.json` at the project root with the seven default entries
   above.
 - Create `src/model_config.py` with a `ModelConfig` dataclass and a
   `load_models(path: str = "models.json") -> dict[str, ModelConfig]`
   function that:
   - Reads and validates the JSON (all required fields present, role is one
-    of the four known values, provider is `"ollama"` or `"openrouter"`).
+    of the seven known values, provider is `"ollama"`, `"openrouter"`, or
+    `"local"`).
   - Returns a dict keyed by role.
   - Falls back to hardcoded defaults and logs a warning if the file is
     missing or invalid — the app must still start cleanly.
 - Add `models.json` to `.gitignore` so user customisations are not
-  committed (ship a `models.json.example` instead that is tracked).
+  committed; ship a tracked `models.json.example` with the same content.
 - Add unit tests in `tests/test_model_config.py` covering: valid file loads
   correctly, missing file uses defaults, invalid JSON uses defaults, missing
   required field uses defaults, unknown role is ignored.
@@ -753,19 +787,22 @@ Replace all hardcoded model constants with values read from `load_models()`:
 - `src/orchestrator.py` — `_OLLAMA_VISION_MODELS` frozenset replaced by
   checking `ModelConfig.vision` on the loaded configs; display name strings
   sourced from `display_name` field.
-- `src/app.py` — `OLLAMA_MODEL_DEFAULT` sourced from `simple_ollama` role.
+- `src/app.py` — `OLLAMA_MODEL_DEFAULT` sourced from `simple_ollama` role;
+  `WHISPER_MODEL_DEFAULT` sourced from `whisper` role; `--whisper-model`
+  CLI flag removed entirely (Whisper size is now config-only).
+- `src/memory/store.py` — `_EMBED_MODEL` sourced from `embedding` role.
+- `src/tools/image_gen.py` — `_SDXL_MODEL` sourced from `image_gen` role.
 - All existing constants become module-level variables initialised from the
   loader so the rest of each module's code is unchanged.
 
 ### T22.3 — UI model status display
 **Status:** not started
 
-- Show the active model for each tier in the UI — a small `gr.Markdown`
-  beneath the chatbot (or inside a collapsible "Models" accordion) listing
-  the four roles and their configured `display_name` and `provider`.
+- Show the active model for each role in the UI — inside a collapsible
+  "Models" accordion listing each role's `display_name` and `provider`.
 - This gives users immediate visual confirmation that their `models.json`
   changes have taken effect without inspecting logs.
-- Update `tests/test_app_startup.py` to confirm the model info markdown is
+- Update `tests/test_app_startup.py` to confirm the Models accordion is
   rendered when the app is built.
 
 ---
