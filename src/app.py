@@ -393,6 +393,15 @@ def build_app(
         # ── Mode switching ──────────────────────────────────────────────────
 
         def toggle_input_mode(mode):
+            """Show text or speech input components based on selected mode.
+
+            Args:
+                mode: Input mode string — ``"text"`` or ``"speech"``.
+
+            Returns:
+                Three ``gr.update`` dicts controlling visibility of the text
+                input, submit button, and audio input respectively.
+            """
             text_vis = mode == "text"
             speech_vis = mode == "speech"
             return (
@@ -402,6 +411,14 @@ def build_app(
             )
 
         def toggle_output_mode(mode):
+            """Show or hide the audio output component based on output mode.
+
+            Args:
+                mode: Output mode string — ``"text"`` or ``"text and speech"``.
+
+            Returns:
+                A ``gr.update`` dict controlling audio output visibility.
+            """
             return gr.update(visible=mode == "text and speech")
 
         input_mode.change(
@@ -411,6 +428,15 @@ def build_app(
         )
 
         def set_chatbot_height(choice):
+            """Update the chatbot panel height based on the selected size.
+
+            Args:
+                choice: One of the keys in ``_LINE_HEIGHTS``
+                  (e.g. ``"compact"``, ``"standard"``, ``"large"``).
+
+            Returns:
+                A ``gr.update`` dict setting the chatbot ``height`` in pixels.
+            """
             return gr.update(height=_LINE_HEIGHTS[choice])
 
         output_mode.change(
