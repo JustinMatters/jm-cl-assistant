@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import ollama
 
+from src.helpers import trim_history
 from src.memory.store import MemoryStore
 from src.model_config import load_models
 from src.openrouter_client import (
@@ -202,6 +203,9 @@ class Orchestrator:
                 if not _model_supports_vision(ollama_model):
                     effective = "advanced_llm"
             self.last_backend = self._backend_labels[effective]
+            # Trim history to the active model's context token budget.
+            budget = _MODEL_CONFIG[effective].context_tokens
+            augmented, was_trimmed = trim_history(augmented, budget)
             b_schemas = REGISTRY.schemas(active_names)
             b_executor = (
                 self._make_b_executor(active_names) if b_schemas else None
@@ -241,6 +245,11 @@ class Orchestrator:
                     tools=b_schemas or None,
                     tool_executor=b_executor,
                     image=image,
+                )
+            if was_trimmed:
+                response += (
+                    "\n\n*(older context was trimmed"
+                    " to fit the model's window)*"
                 )
         updated_history = list(history) + [
             {"role": "user", "content": query},
@@ -566,6 +575,9 @@ class Orchestrator:
             if not _model_supports_vision(ollama_model):
                 effective = "advanced_llm"
         self.last_backend = self._backend_labels[effective]
+        # Trim history to the active model's context token budget.
+        budget = _MODEL_CONFIG[effective].context_tokens
+        augmented, was_trimmed = trim_history(augmented, budget)
         b_schemas = REGISTRY.schemas(active_names)
 
         if b_schemas:
@@ -607,6 +619,11 @@ class Orchestrator:
                     tool_executor=b_executor,
                     image=image,
                 )
+            if was_trimmed:
+                response += (
+                    "\n\n*(older context was trimmed"
+                    " to fit the model's window)*"
+                )
             updated_history = list(history) + [
                 {"role": "user", "content": query},
                 {"role": "assistant", "content": response},
@@ -647,6 +664,10 @@ class Orchestrator:
             yield accumulated, None
 
         response = accumulated
+        if was_trimmed:
+            response += (
+                "\n\n*(older context was trimmed to fit the model's window)*"
+            )
         updated_history = list(history) + [
             {"role": "user", "content": query},
             {"role": "assistant", "content": response},

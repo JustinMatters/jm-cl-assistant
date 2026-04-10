@@ -5,28 +5,32 @@
       "provider": "ollama",
       "model_id": "qwen3:1.7b",
       "display_name": "Qwen3 1.7B",
-      "vision": false
+      "vision": false,
+      "context_tokens": 4000
     },
     {
       "role": "simple_llm",
       "provider": "ollama",
       "model_id": "gemma4:e4b",
       "display_name": "Gemma 4 (4B)",
-      "vision": true
+      "vision": true,
+      "context_tokens": 6000
     },
     {
       "role": "advanced_llm",
       "provider": "openrouter",
       "model_id": "anthropic/claude-sonnet-4-6",
       "display_name": "Claude Sonnet 4.6",
-      "vision": true
+      "vision": true,
+      "context_tokens": 16000
     },
     {
       "role": "complex_llm",
       "provider": "openrouter",
       "model_id": "anthropic/claude-opus-4-6",
       "display_name": "Claude Opus 4.6",
-      "vision": true
+      "vision": true,
+      "context_tokens": 32000
     },
     {
       "role": "vector_db_embedding",

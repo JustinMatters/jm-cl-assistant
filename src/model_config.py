@@ -58,6 +58,10 @@ class ModelConfig:
         diffusers_max_image_dimension: For ``diffusers_image_gen_model``
           only — maximum pixel size for generated or downloaded images.
           Defaults to 512.
+        context_tokens: Usable history token budget for this model.
+          The orchestrator trims conversation history when the estimated
+          token count exceeds this value.  ``0`` disables trimming (used
+          for non-conversational roles such as embedding and STT models).
 
     Attributes:
         role: Logical role identifier.
@@ -66,6 +70,7 @@ class ModelConfig:
         display_name: Human-readable label.
         vision: True if the model accepts image inputs.
         diffusers_max_image_dimension: Max image dimension in pixels.
+        context_tokens: History token budget; ``0`` means no limit.
     """
 
     role: str
@@ -74,6 +79,7 @@ class ModelConfig:
     display_name: str
     vision: bool
     diffusers_max_image_dimension: int = field(default=512)
+    context_tokens: int = field(default=0)
 
 
 # Hardcoded defaults — used when models.json is absent or malformed.
@@ -84,6 +90,7 @@ _DEFAULTS: dict[str, ModelConfig] = {
         model_id="qwen3:1.7b",
         display_name="Qwen3 1.7B",
         vision=False,
+        context_tokens=4000,
     ),
     "simple_llm": ModelConfig(
         role="simple_llm",
@@ -91,6 +98,7 @@ _DEFAULTS: dict[str, ModelConfig] = {
         model_id="gemma4:e4b",
         display_name="Gemma 4 (4B)",
         vision=True,
+        context_tokens=6000,
     ),
     "advanced_llm": ModelConfig(
         role="advanced_llm",
@@ -98,6 +106,7 @@ _DEFAULTS: dict[str, ModelConfig] = {
         model_id="anthropic/claude-sonnet-4-6",
         display_name="Claude Sonnet 4.6",
         vision=True,
+        context_tokens=16000,
     ),
     "complex_llm": ModelConfig(
         role="complex_llm",
@@ -105,6 +114,7 @@ _DEFAULTS: dict[str, ModelConfig] = {
         model_id="anthropic/claude-opus-4-6",
         display_name="Claude Opus 4.6",
         vision=True,
+        context_tokens=32000,
     ),
     "vector_db_embedding": ModelConfig(
         role="vector_db_embedding",
@@ -171,6 +181,7 @@ def _parse_entry(entry: object) -> ModelConfig | None:
         diffusers_max_image_dimension=int(
             entry.get("diffusers_max_image_dimension", 512)
         ),
+        context_tokens=int(entry.get("context_tokens", 0)),
     )
 
 

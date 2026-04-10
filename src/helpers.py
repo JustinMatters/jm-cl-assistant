@@ -102,6 +102,65 @@ def to_wav_bytes(arr: np.ndarray, sample_rate: int) -> bytes:
     return buf.getvalue()
 
 
+def count_tokens(messages: list[dict]) -> int:
+    """Estimate the token count of a list of message dicts.
+
+    Uses a characters-divided-by-four heuristic that avoids any external
+    tokeniser dependency.  Accurate enough for budget checking; actual
+    token counts vary by model and content.
+
+    Text content in vision messages (list-form content blocks) is summed
+    over text-type parts only — image data is excluded.
+
+    Args:
+        messages: List of ``{"role": ..., "content": ...}`` dicts.
+
+    Returns:
+        Estimated total token count across all messages.
+    """
+    total = 0
+    for msg in messages:
+        content = msg.get("content") or ""
+        if isinstance(content, str):
+            total += len(content)
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    total += len(part.get("text", ""))
+    return total // 4
+
+
+def trim_history(augmented: list, budget: int) -> tuple[list, bool]:
+    """Trim history to fit within a token budget.
+
+    Drops the oldest non-system user+assistant message pairs until
+    ``count_tokens(augmented) <= budget``.  System messages are always
+    preserved.  If ``budget`` is ``0`` or negative, returns the input
+    unchanged (no-limit mode).
+
+    Args:
+        augmented: Conversation history, possibly prefixed with injected
+          system messages.
+        budget: Maximum estimated token count.  ``0`` disables trimming.
+
+    Returns:
+        ``(trimmed_history, was_trimmed)`` — ``was_trimmed`` is ``True``
+        when at least one pair was dropped.
+    """
+    if budget <= 0 or count_tokens(augmented) <= budget:
+        return augmented, False
+
+    system_msgs = [m for m in augmented if m.get("role") == "system"]
+    non_system = [m for m in augmented if m.get("role") != "system"]
+
+    while (
+        len(non_system) >= 2 and count_tokens(system_msgs + non_system) > budget
+    ):
+        non_system = non_system[2:]
+
+    return system_msgs + non_system, True
+
+
 def suppress_connection_reset_errors() -> None:
     """Suppress the Windows asyncio ConnectionResetError log noise.
 
