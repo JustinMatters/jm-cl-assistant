@@ -23,10 +23,10 @@ User Input (text | Whisper speech)
    Gradio UI
         ↓
    Ollama Router (local model classifies query)
-   ├── trivial_ollama → qwen3:1.7b (fast local model)
-   ├── simple_ollama  → gemma4:e4b (local multimodal model)
-   ├── complex_sonnet → Claude Sonnet 4.6 via OpenRouter
-   └── complex_opus   → Claude Opus 4.6 via OpenRouter
+   ├── trivial_llm  → qwen3:1.7b (fast local model)
+   ├── simple_llm   → gemma4:e4b (local multimodal model)
+   ├── advanced_llm → Claude Sonnet 4.6 via OpenRouter
+   └── complex_llm  → Claude Opus 4.6 via OpenRouter
         ↓
    Output (text | text and speech via Kokoro TTS)
 ```
@@ -102,22 +102,26 @@ ollama run gemma4:e4b
 
 | Model | Routing tier | VRAM (approx) |
 |-------|-------------|---------------|
-| `qwen3:1.7b` | `trivial_ollama` — greetings, facts a schoolchild would know | ~2 GB |
-| `gemma4:e4b` | `simple_ollama` — factual lookups, routing classifier, vision | ~8 GB |
-| Claude Sonnet 4.6 (OpenRouter) | `complex_sonnet` — analysis, essays, reasoning | cloud |
-| Claude Opus 4.6 (OpenRouter) | `complex_opus` — research, expert proofs | cloud |
+| `qwen3:1.7b` | `trivial_llm` — greetings, facts a schoolchild would know | ~2 GB |
+| `gemma4:e4b` | `simple_llm` — factual lookups, routing classifier, vision | ~8 GB |
+| Claude Sonnet 4.6 (OpenRouter) | `advanced_llm` — analysis, essays, reasoning | cloud |
+| Claude Opus 4.6 (OpenRouter) | `complex_llm` — research, expert proofs | cloud |
 
 Speech recognition uses **Whisper medium** by default (~5 GB VRAM on CUDA).
-The Whisper model and Ollama model can be overridden at runtime:
+The Whisper model size is configured in `models.json` (see
+[Custom model configuration](#4-custom-model-configuration-optional) below).
+The Ollama model for simple queries can be overridden at launch:
 
 ```bash
-uv run python assistant.py --whisper-model tiny --ollama-model llama3.2
+uv run python assistant.py --ollama-model llama3.2
 ```
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--whisper-model` | `medium` | Whisper model size (`tiny`, `base`, `small`, `medium`, `large`) |
 | `--ollama-model` | `gemma4:e4b` | Ollama model name for routing and simple queries |
+| `--no-tts` | off | Disable Kokoro TTS output entirely |
+| `--no-stt` | off | Disable Whisper STT input entirely |
+| `--no-tools` | off | Disable all runtime tools and hide the Tools panel |
 
 > **First run note:** If the Whisper model has not been used before, it will
 > be downloaded automatically (~1.5 GB for `medium`) on first launch and
@@ -241,8 +245,11 @@ export OPENROUTER_API_KEY=your_key_here
 # 5. Run the app (defaults)
 uv run python assistant.py
 
-# 5a. Or override models at launch
-uv run python assistant.py --whisper-model tiny --ollama-model llama3.2
+# 5a. Or override the simple/routing Ollama model at launch
+uv run python assistant.py --ollama-model llama3.2
+
+# 5b. Disable STT, TTS, or tools if not needed
+uv run python assistant.py --no-stt --no-tts --no-tools
 ```
 
 ## Development
