@@ -147,8 +147,7 @@ access via your browser's site settings for `localhost` and reload the page.
 
 ## Docker Quick-Start
 
-The easiest way to run the assistant is with Docker Compose, which starts the
-Python app and an Ollama sidecar together.
+The easiest way to run the assistant is with Docker Compose, which starts the Python app and an Ollama sidecar together.
 
 ### Prerequisites
 
